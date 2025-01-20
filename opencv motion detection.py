@@ -239,13 +239,13 @@ def track_motion(camera1_id, camera2_id):
 if __name__ == "__main__":
     # Create windows and sliders
     cv2.namedWindow('Camera 1')
-    cv2.createTrackbar('Threshold Value', 'Camera 1', 25, 100, nothing)
-    cv2.createTrackbar('Minimum Size', 'Camera 1', 25, 100, nothing)
-    cv2.createTrackbar('Line Position %', 'Camera 1', 50, 100, nothing)
+    cv2.createTrackbar('Threshold', 'Camera 1', 25, 100, nothing)
+    cv2.createTrackbar('Min Size', 'Camera 1', 25, 100, nothing)
+    cv2.createTrackbar('Trigger', 'Camera 1', 50, 100, nothing)
 
     cv2.namedWindow('Camera 2')
-    cv2.createTrackbar('Threshold Value', 'Camera 2', 10, 100, nothing)
-    cv2.createTrackbar('Minimum Size', 'Camera 2', 25, 100, nothing)
+    cv2.createTrackbar('Threshold', 'Camera 2', 50, 100, nothing)
+    cv2.createTrackbar('Min Size', 'Camera 2', 25, 100, nothing)
 
     # Load standby image
     standby_image = cv2.imread("./standby.png")

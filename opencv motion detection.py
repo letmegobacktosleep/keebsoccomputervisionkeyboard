@@ -136,13 +136,13 @@ def track_motion(camera1_id, camera2_id):
             continue
 
         # Get current threshold values
-        threshold1 = cv2.getTrackbarPos('Threshold Value', 'Camera 1')
-        min_size1 = cv2.getTrackbarPos('Minimum Size', 'Camera 1')
+        threshold1 = cv2.getTrackbarPos('Threshold', 'Camera 1')
+        min_size1 = cv2.getTrackbarPos('Min Size', 'Camera 1')
         
-        threshold2 = cv2.getTrackbarPos('Threshold Value', 'Camera 2')
-        min_size2 = cv2.getTrackbarPos('Minimum Size', 'Camera 2')
+        threshold2 = cv2.getTrackbarPos('Threshold', 'Camera 2')
+        min_size2 = cv2.getTrackbarPos('Min Size', 'Camera 2')
         
-        line_position_percent = cv2.getTrackbarPos('Line Position %', 'Camera 1')
+        line_position_percent = cv2.getTrackbarPos('Trigger', 'Camera 1')
         line_position = int((line_position_percent / 100) * width1)
         
         # Compare frames for both cameras
@@ -163,11 +163,10 @@ def track_motion(camera1_id, camera2_id):
             x, y, w, h = cv2.boundingRect(contour)
             cv2.rectangle(current_frame1, (x, y), (x + w, y + h), (0, 255, 0), 2)
             
-            center = ((x+w//2), (y+h//2))
-            if center[0] > line_position:
+            if x > line_position:
                 right_motion = True
                 
-            cv2.putText(current_frame1, f'Motion {center}', (x, y - 10),
+            cv2.putText(current_frame1, f'Motion ({(x+w//2)}, {(y+h//2)})', (x, y - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         
         # Check for motion in camera 2
@@ -183,6 +182,11 @@ def track_motion(camera1_id, camera2_id):
                 reference_frame2_counter += 1
         else:
             reference_frame2_counter = 0
+
+        # Display status text
+        status_text = "Triggered" if right_motion else "Waiting"
+        cv2.putText(current_frame1, status_text, (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) if right_motion else (0, 255, 0), 2)
 
         # Check for motion in camera 2 against reference frame
         if right_motion:
@@ -217,11 +221,6 @@ def track_motion(camera1_id, camera2_id):
                 camera1.join()
                 camera2.join()
                 return center
-        
-        # Display status text
-        status_text = "Waiting" if right_motion else "Triggered"
-        cv2.putText(current_frame1, status_text, (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) if right_motion else (0, 255, 0), 2)
         
         # Show frames
         cv2.imshow('Camera 1', current_frame1)

@@ -163,10 +163,11 @@ def track_motion(camera1_id, camera2_id):
             x, y, w, h = cv2.boundingRect(contour)
             cv2.rectangle(current_frame1, (x, y), (x + w, y + h), (0, 255, 0), 2)
             
-            if (x + w/2) > line_position:
+            center = ((x+w//2), (y+h//2))
+            if center[0] > line_position:
                 right_motion = True
                 
-            cv2.putText(current_frame1, f'Motion ({x}, {y})', (x, y - 10),
+            cv2.putText(current_frame1, f'Motion {center}', (x, y - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         
         # Check for motion in camera 2
@@ -201,7 +202,9 @@ def track_motion(camera1_id, camera2_id):
             if largest_contour3 is not None:
                 x, y, w, h = cv2.boundingRect(largest_contour3)
                 cv2.rectangle(display_frame2, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                cv2.putText(display_frame2, f'Motion ({x}, {y})', (x, y - 10),
+
+                center = ((x+w//2), (y+h//2))
+                cv2.putText(display_frame2, f'Motion {center}', (x, y - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                 
                 cv2.imshow('Camera 1', current_frame1)
@@ -213,10 +216,10 @@ def track_motion(camera1_id, camera2_id):
                 camera2.stop()
                 camera1.join()
                 camera2.join()
-                return ((x+w//2), (y+h//2))
+                return center
         
         # Display status text
-        status_text = "Right Motion: YES" if right_motion else "Right Motion: NO"
+        status_text = "Waiting" if right_motion else "Triggered"
         cv2.putText(current_frame1, status_text, (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) if right_motion else (0, 255, 0), 2)
         

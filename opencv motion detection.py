@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 import time
+import threading
+from queue import Queue
 
 def nothing(x):
     pass
@@ -35,43 +37,111 @@ def compare_frames(prev_frame, current_frame, threshold):
     
     return gray, thresh, contours
 
-def track_motion(cap1, cap2):
-    
-    # Read first frames
-    _, prev_frame1 = cap1.read()
-    prev_frame1 = cv2.cvtColor(prev_frame1, cv2.COLOR_BGR2GRAY)
+import cv2
+import numpy as np
+import time
+import threading
+from queue import Queue, Empty, Full
+
+class CameraThread(threading.Thread):
+    def __init__(self, camera_id):
+        super().__init__()
+        self.camera_id = camera_id
+        self.cap = cv2.VideoCapture(camera_id)
+        self.frame_queue = Queue(maxsize=2)
+        self.running = True
+        self._stop_lock = threading.Lock()
+        self._camera_lock = threading.Lock()
+
+    def run(self):
+        while True:
+            with self._stop_lock:
+                if not self.running:
+                    break
+                
+            with self._camera_lock:
+                if self.cap is None:
+                    break
+                ret, frame = self.cap.read()
+                
+            if ret:
+                if self.frame_queue.full():
+                    try:
+                        self.frame_queue.get_nowait()
+                    except Empty:
+                        pass
+                try:
+                    self.frame_queue.put_nowait(frame)
+                except Full:
+                    pass
+            time.sleep(0.001)
+
+    def get_frame(self):
+        try:
+            return self.frame_queue.get_nowait()
+        except Empty:
+            return None
+
+    def stop(self):
+        with self._stop_lock:
+            self.running = False
+        
+        # Give the thread a moment to exit its read loop
+        time.sleep(0.1)
+        
+        with self._camera_lock:
+            if self.cap is not None:
+                self.cap.release()
+                self.cap = None
+
+def track_motion(camera1_id, camera2_id):
+    # Start camera threads
+    camera1 = CameraThread(camera1_id)
+    camera2 = CameraThread(camera2_id)
+    camera1.start()
+    camera2.start()
+
+    # Wait for first frames
+    while True:
+        frame1 = camera1.get_frame()
+        frame2 = camera2.get_frame()
+        if frame1 is not None and frame2 is not None:
+            break
+        time.sleep(0.1)
+
+    # Initialize previous frames
+    prev_frame1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
     prev_frame1 = cv2.GaussianBlur(prev_frame1, (21, 21), 0)
     
-    _, prev_frame2 = cap2.read()
-    prev_frame2 = cv2.cvtColor(prev_frame2, cv2.COLOR_BGR2GRAY)
+    prev_frame2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
     prev_frame2 = cv2.GaussianBlur(prev_frame2, (21, 21), 0)
     
     # Get frame dimensions
     height1 = prev_frame1.shape[0]
-    width1  = prev_frame1.shape[1]
+    width1 = prev_frame1.shape[1]
     height2 = prev_frame2.shape[0]
-    width2  = prev_frame2.shape[1]
+    width2 = prev_frame2.shape[1]
     
-    # Store reference frame from camera 2 (when no motion is detected)
+    # Store reference frame from camera 2
     reference_frame2 = prev_frame2.copy()
-    reference_frame2_counter = 0 # Count number of frames since last motion
-    display_frame2 = None  # Frame to display for camera 2
-    
+    reference_frame2_counter = 0
+    display_frame2 = None
+
     while True:
-        # Read current frames
-        ret1, current_frame1 = cap1.read()
-        ret2, current_frame2 = cap2.read()
-        if not ret1 or not ret2:
-            break
+        # Get current frames from queues
+        current_frame1 = camera1.get_frame()
+        current_frame2 = camera2.get_frame()
         
+        if current_frame1 is None or current_frame2 is None:
+            continue
+
         # Get current threshold values
         threshold1 = cv2.getTrackbarPos('Threshold Value', 'Camera 1')
-        min_size1  = cv2.getTrackbarPos('Minimum Size', 'Camera 1')
-
+        min_size1 = cv2.getTrackbarPos('Minimum Size', 'Camera 1')
+        
         threshold2 = cv2.getTrackbarPos('Threshold Value', 'Camera 2')
-        min_size2  = cv2.getTrackbarPos('Minimum Size', 'Camera 2')
-
-        # Get current line position values
+        min_size2 = cv2.getTrackbarPos('Minimum Size', 'Camera 2')
+        
         line_position_percent = cv2.getTrackbarPos('Line Position %', 'Camera 1')
         line_position = int((line_position_percent / 100) * width1)
         
@@ -79,11 +149,11 @@ def track_motion(cap1, cap2):
         gray1, _, contours1 = compare_frames(prev_frame1, current_frame1, threshold1)
         gray2, _, contours2 = compare_frames(prev_frame2, current_frame2, threshold2)
         
-        # Draw vertical line at adjustable position (camera 1)
+        # Draw vertical line
         cv2.line(current_frame1, (line_position, 0), (line_position, height1), (0, 255, 255), 2)
         
         right_motion = False
-        display_frame2 = current_frame2.copy()  # Reset display frame
+        display_frame2 = current_frame2.copy()
         
         # Process contours for camera 1
         for contour in contours1:
@@ -93,7 +163,6 @@ def track_motion(cap1, cap2):
             x, y, w, h = cv2.boundingRect(contour)
             cv2.rectangle(current_frame1, (x, y), (x + w, y + h), (0, 255, 0), 2)
             
-            # Check if motion is right of the line
             if (x + w/2) > line_position:
                 right_motion = True
                 
@@ -105,22 +174,19 @@ def track_motion(cap1, cap2):
         
         # Update reference frame when no motion in camera 2
         if not motion_detected2:
-            # Update if it has been more than 10 frames since last motion
-            if reference_frame2_counter > 10:
+            if reference_frame2_counter > 5:
                 reference_frame2 = gray2.copy()
                 cv2.putText(display_frame2, "Reference Frame Captured", (10, 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
             else:
-                reference_frame2_counter += 1 # there has been motion in the last few frames
+                reference_frame2_counter += 1
         else:
             reference_frame2_counter = 0
 
-        # Check for motion in camera 2, against reference frame
+        # Check for motion in camera 2 against reference frame
         if right_motion:
-
             _, _, contours3 = compare_frames(reference_frame2, current_frame2, threshold2)
 
-            # Process contours for camera 2
             largest_area3 = 0
             largest_contour3 = None
             for contour in contours3:
@@ -132,20 +198,21 @@ def track_motion(cap1, cap2):
                     largest_area3 = contour_area
                     largest_contour3 = contour
             
-            # Draw bounding box on largest contour and return center of box
             if largest_contour3 is not None:
                 x, y, w, h = cv2.boundingRect(largest_contour3)
                 cv2.rectangle(display_frame2, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                    
                 cv2.putText(display_frame2, f'Motion ({x}, {y})', (x, y - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                 
-                # Show frames
                 cv2.imshow('Camera 1', current_frame1)
                 cv2.imshow('Camera 2', display_frame2)
                 cv2.waitKey(1)
-                
-                # Return center of box
+
+                # Stop cameras and return result
+                camera1.stop()
+                camera2.stop()
+                camera1.join()
+                camera2.join()
                 return ((x+w//2), (y+h//2))
         
         # Display status text
@@ -156,7 +223,6 @@ def track_motion(cap1, cap2):
         # Show frames
         cv2.imshow('Camera 1', current_frame1)
         cv2.imshow('Camera 2', display_frame2)
-        # cv2.imshow('Threshold', thresh1)
         
         # Update previous frames
         prev_frame1 = gray1
@@ -164,13 +230,14 @@ def track_motion(cap1, cap2):
         
         # Break loop with 'Escape' key
         if cv2.waitKey(1) & 0xFF == 27:
+            camera1.stop()
+            camera2.stop()
+            camera1.join()
+            camera2.join()
             return None
-    
-    
 
 if __name__ == "__main__":
-
-    # Create window and sliders
+    # Create windows and sliders
     cv2.namedWindow('Camera 1')
     cv2.createTrackbar('Threshold Value', 'Camera 1', 25, 100, nothing)
     cv2.createTrackbar('Minimum Size', 'Camera 1', 25, 100, nothing)
@@ -186,34 +253,16 @@ if __name__ == "__main__":
     cv2.imshow('Camera 2', standby_image)
 
     while True:
-
         key = cv2.waitKey(1000)
 
-        # Start motion detection with 'Enter' key
-        if key == 13:
-
-            # Start video captures
-            cap1 = cv2.VideoCapture(0)  # First camera
-            cap2 = cv2.VideoCapture(2)  # Second camera
-
-            if not cap1.isOpened() or not cap2.isOpened():
-                print("Error: Couldn't open one or both cameras")
-                continue
-
-            # Track motion
-            position = track_motion(cap1, cap2)
-
-            # Release resources
-            cap1.release()
-            cap2.release()
+        if key == 13:  # Enter key
+            position = track_motion(0, 2)  # Camera IDs
             
-            # Check if a bounding box was returned
             if position:
                 print(f"{position}")
             else:
                 print("No bounding boxes were returned")
-        
-        # Kill program with 'Escape' key
-        elif key == 27:
+                
+        elif key == 27:  # Escape key
             cv2.destroyAllWindows()
             break

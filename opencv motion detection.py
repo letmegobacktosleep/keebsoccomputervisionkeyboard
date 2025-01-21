@@ -1,8 +1,13 @@
+# Import built-in libraries
+import os
 import time
 import threading
 from queue import Queue
+# Import 3rd party libraries
 import cv2
 import numpy as np
+from pynput import keyboard
+from pynput.keyboard import Key, Controller
 
 def nothing(x):
     pass
@@ -95,11 +100,11 @@ class CameraThread(threading.Thread):
                 self.cap = None
 
 class GridDrawer:
-    def __init__(self):
+    def __init__(self, grid_size_x=5, grid_size_y=5):
         self.points = []
         self.max_points = 4
-        self.grid_size_x = 5  # Default grid size X
-        self.grid_size_y = 5  # Default grid size Y
+        self.grid_size_x = grid_size_x
+        self.grid_size_y = grid_size_y
         self.transform_matrix = None
         self.inverse_matrix = None
         self.highlighted_cell = None
@@ -114,9 +119,6 @@ class GridDrawer:
             else:
                 self.points[self.counter] = (x, y)
                 self.counter = (self.counter + 1) % self.max_points
-        #elif event == cv2.EVENT_MOUSEMOVE:
-        #    if len(self.points) == self.max_points:
-        #        self.highlighted_cell = self.get_grid_coordinate(x, y)
     
     def get_grid_coordinate(self, x, y):
         """Convert screen coordinates to grid coordinates."""
@@ -340,10 +342,10 @@ def track_motion(camera1_id, camera2_id, grid):
                 cv2.putText(display_frame2, f'Motion {center}', (x, y - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                 
-                # Get the grid cell
-                grid_cell = grid.get_grid_coordinate(center[0], center[1])
+                # Get the grid coordinates
+                grid_coordinate = grid.get_grid_coordinate(center[0], center[1])
 
-                if grid_cell is not None:
+                if grid_coordinate is not None:
                     # Project grid onto camera 2
                     display_frame2 = grid.draw_on_frame(display_frame2)
                     
@@ -356,7 +358,7 @@ def track_motion(camera1_id, camera2_id, grid):
                     camera2.stop()
                     camera1.join()
                     camera2.join()
-                    return grid_cell
+                    return grid_coordinate
             
         # Project grid onto camera 2
         display_frame2 = grid.draw_on_frame(display_frame2)
@@ -388,14 +390,25 @@ if __name__ == "__main__":
     cv2.createTrackbar('Threshold', 'Camera 2', 50, 100, nothing)
     cv2.createTrackbar('Min Size', 'Camera 2', 25, 100, nothing)
 
+    # Define keyboard keys
+    keyboard_layout = np.array([
+        ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+        ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'backspace'],
+        ['z', 'x', 'c', 'v', 'b', 'n', 'm', 'space', 'space', 'space']
+    ])
+
     # Create mouse callback
-    grid = GridDrawer()
+    grid = GridDrawer(11, 3)
     cv2.setMouseCallback("Camera 2", grid.mouse_callback)
 
     # Load standby image
     standby_image = cv2.imread("./standby.png")
     cv2.imshow('Camera 1', standby_image)
     cv2.imshow('Camera 2', standby_image)
+    cv2.waitKey(1)
+
+    # Create keyboard controller
+    virtual_keyboard = Controller()
 
     while True:
         key = cv2.waitKey(1000)
@@ -405,6 +418,9 @@ if __name__ == "__main__":
             
             if position:
                 print(f"{position}")
+            #virtual_keyboard.press(keyboard_layout[position])
+            #time.sleep(int.from_bytes(os.urandom(1), 'big') / 1000)
+            #virtual_keyboard.release(keyboard_layout[position])
             else:
                 print("Motion tracking was aborted")
                 

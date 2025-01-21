@@ -390,7 +390,7 @@ def track_motion(camera1_id, camera2_id, grid, command_queue):
         
         threshold2 = cv2.getTrackbarPos('Threshold', 'Camera 2')
         min_size2 = cv2.getTrackbarPos('Min Size', 'Camera 2')
-        max_size2 = cv2.getTrackbarPos('Max Size', 'Camera 2') * width2 * height2
+        max_size2 = cv2.getTrackbarPos('Max Size', 'Camera 2')
         
         line_position_percent = cv2.getTrackbarPos('Trigger', 'Camera 1')
         line_position = int((line_position_percent / 100) * height1)
@@ -506,7 +506,7 @@ if __name__ == "__main__":
     cv2.namedWindow('Camera 2')
     cv2.createTrackbar('Threshold', 'Camera 2', 50, 100, nothing)
     cv2.createTrackbar('Min Size', 'Camera 2', 25, 100, nothing)
-    cv2.createTrackbar('Max Size', 'Camera 2', 90, 100, nothing)
+    cv2.createTrackbar('Max Size', 'Camera 2', 100000, 500000, nothing)
 
     # Define keyboard layout
     keyboard_layout = np.array([

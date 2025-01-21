@@ -549,7 +549,6 @@ if __name__ == "__main__":
                     virtual_keyboard.press(keyboard_layout[result])
                     time.sleep(0.2 + int.from_bytes(os.urandom(1), 'big') / 1000)
                     virtual_keyboard.release(keyboard_layout[result])
-                    print("why didn't it work")
             elif command == 'exit':
                 running = False
         except Empty:

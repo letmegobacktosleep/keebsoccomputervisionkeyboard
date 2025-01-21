@@ -415,9 +415,6 @@ def track_motion(camera1_id, camera2_id, grid, command_queue):
             center = ((x+w//2), (y+h//2))
             if center[1] > line_position:
                 triggered = True
-                
-            cv2.putText(current_frame1, f'Motion ({(x+w//2)}, {(y+h//2)})', (x, y - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         
         # Check for motion in camera 2
         motion_detected2 = len([cnt for cnt in contours2 if cv2.contourArea(cnt) > min_size2]) > 0
@@ -548,7 +545,7 @@ if __name__ == "__main__":
                 elif result is not None:
                     print(f"{result}")
                     virtual_keyboard.press(keyboard_layout[result])
-                    time.sleep(int.from_bytes(os.urandom(1), 'big') / 1000)
+                    time.sleep(200 + int.from_bytes(os.urandom(1), 'big') / 1000)
                     virtual_keyboard.release(keyboard_layout[result])
             elif command == 'exit':
                 running = False

@@ -79,7 +79,7 @@ class CameraThread(threading.Thread):
                     self.frame_queue.put_nowait(frame)
                 except Full:
                     pass
-            time.sleep(0.001)
+            time.sleep(0.01)
 
     def get_frame(self):
         try:
@@ -121,67 +121,148 @@ class GridDrawer:
                 self.counter = (self.counter + 1) % self.max_points
     
     def get_grid_coordinate(self, x, y):
-        """Convert screen coordinates to grid coordinates."""
-        if self.inverse_matrix is None or len(self.points) != self.max_points:
+        """Convert screen coordinates to grid coordinates using linear interpolation."""
+        if len(self.points) != 4:
             return None
             
-        point = np.array([x, y, 1]).reshape(1, -1)
-        transformed = point.dot(self.inverse_matrix.T)
-        if transformed[0, 2] == 0:
-            return None
+        # Helper function for inverse lerp
+        def inverse_lerp(start, end, point):
+            # Returns how far point is between start and end (0 to 1)
+            if abs(end - start) < 0.0001:  # Avoid division by zero
+                return 0
+            return (point - start) / (end - start)
+        
+        def point_to_line_distance(p, a, b):
+            # Returns distance from point p to line segment ab
+            ax, ay = a
+            bx, by = b
+            px, py = p
             
-        grid_x = transformed[0, 0] / transformed[0, 2]
-        grid_y = transformed[0, 1] / transformed[0, 2]
+            # Vector from a to b
+            abx = bx - ax
+            aby = by - ay
+            
+            # Vector from a to p
+            apx = px - ax
+            apy = py - ay
+            
+            # Length of ab squared
+            ab_squared = abx * abx + aby * aby
+            
+            if ab_squared == 0:
+                return ((px - ax) ** 2 + (py - ay) ** 2) ** 0.5
+                
+            # Calculate dot product
+            ap_ab = apx * abx + apy * aby
+            
+            # Get normalized distance along line
+            t = ap_ab / ab_squared
+            
+            if t < 0:
+                return ((px - ax) ** 2 + (py - ay) ** 2) ** 0.5
+            elif t > 1:
+                return ((px - bx) ** 2 + (py - by) ** 2) ** 0.5
+                
+            # Project point onto line
+            proj_x = ax + t * abx
+            proj_y = ay + t * aby
+            
+            return ((px - proj_x) ** 2 + (py - proj_y) ** 2) ** 0.5
         
-        # Convert to grid coordinates using separate x and y cell sizes
-        cell_size_x = 500 / self.grid_size_x
-        cell_size_y = 500 / self.grid_size_y
+        # Check if point is inside polygon using ray casting
+        poly = np.array(self.points)
+        if cv2.pointPolygonTest(poly, (x, y), False) < 0:
+            return None
         
-        grid_col = int(grid_x / cell_size_x)
-        grid_row = int(grid_y / cell_size_y)
+        # Find closest edge points
+        top = (self.points[0], self.points[1])
+        right = (self.points[1], self.points[2])
+        bottom = (self.points[2], self.points[3])
+        left = (self.points[0], self.points[3])
         
-        if 0 <= grid_col < self.grid_size_x and 0 <= grid_row < self.grid_size_y:
-            self.highlighted_cell = (grid_row, grid_col)
-            return self.highlighted_cell
+        # Get vertical position (y coordinate)
+        dist_top = point_to_line_distance((x, y), top[0], top[1])
+        dist_bottom = point_to_line_distance((x, y), bottom[0], bottom[1])
+        y_ratio = dist_top / (dist_top + dist_bottom)
         
-        # Not within any grid cells
-        return None
+        # Get horizontal position (x coordinate)
+        dist_left = point_to_line_distance((x, y), left[0], left[1])
+        dist_right = point_to_line_distance((x, y), right[0], right[1])
+        x_ratio = dist_left / (dist_left + dist_right)
+        
+        # Convert to grid coordinates
+        col = int(x_ratio * self.grid_size_x)
+        row = int(y_ratio * self.grid_size_y)
+        
+        # Clamp values to grid bounds
+        col = max(0, min(col, self.grid_size_x - 1))
+        row = max(0, min(row, self.grid_size_y - 1))
+        
+        self.highlighted_cell = (row, col)
+        return self.highlighted_cell
     
     def project_grid(self, frame):
         if len(self.points) != 4:
             return frame
             
-        cell_size_x = 500 / self.grid_size_x
-        cell_size_y = 500 / self.grid_size_y
+        display_frame = frame.copy()
         
-        src_points = np.float32([[0, 0], [500, 0], [500, 500], [0, 500]])
-        dst_points = np.float32(self.points)
+        # Helper function for linear interpolation
+        def lerp(start, end, t):
+            return tuple(int(a + (b - a) * t) for a, b in zip(start, end))
         
-        self.transform_matrix = cv2.getPerspectiveTransform(src_points, dst_points)
-        self.inverse_matrix = cv2.getPerspectiveTransform(dst_points, src_points)
+        # Get edges of polygon
+        top = (self.points[0], self.points[1])
+        right = (self.points[1], self.points[2])
+        bottom = (self.points[2], self.points[3])
+        left = (self.points[0], self.points[3])
         
-        grid_img = np.zeros((501, 501, 3), dtype=np.uint8)
+        # Draw vertical lines
+        for i in range(self.grid_size_x + 1):
+            t = i / self.grid_size_x
+            # Get points on top and bottom edges
+            p1 = lerp(top[0], top[1], t)
+            p2 = lerp(bottom[1], bottom[0], t)  # Note reversed order for bottom
+            cv2.line(display_frame, p1, p2, (0, 255, 0), 2)
         
-        # Draw vertical lines (x-axis divisions)
-        for i in range(0, 501, int(cell_size_x)):
-            cv2.line(grid_img, (i, 0), (i, 500), (0, 255, 0), 2)
-            
-        # Draw horizontal lines (y-axis divisions)
-        for i in range(0, 501, int(cell_size_y)):
-            cv2.line(grid_img, (0, i), (500, i), (0, 255, 0), 2)
+        # Draw horizontal lines
+        for i in range(self.grid_size_y + 1):
+            t = i / self.grid_size_y
+            # Get points on left and right edges
+            p1 = lerp(left[0], left[1], t)
+            p2 = lerp(right[0], right[1], t)
+            cv2.line(display_frame, p1, p2, (0, 255, 0), 2)
         
-        # Highlight cell if mouse is over grid
+        # Highlight cell if center of motion was in the cell
         if self.highlighted_cell is not None:
             row, col = self.highlighted_cell
-            top_left = (int(col * cell_size_x), int(row * cell_size_y))
-            bottom_right = (int((col + 1) * cell_size_x), int((row + 1) * cell_size_y))
-            cv2.rectangle(grid_img, top_left, bottom_right, (0, 0, 255, 128), -1)
+            
+            # Calculate corners of highlighted cell
+            t1 = col / self.grid_size_x
+            t2 = (col + 1) / self.grid_size_x
+            s1 = row / self.grid_size_y
+            s2 = (row + 1) / self.grid_size_y
+            
+            # Get the four corners of the cell
+            top_left = lerp(lerp(left[0], left[1], s1), lerp(right[0], right[1], s1), t1)
+            top_right = lerp(lerp(left[0], left[1], s1), lerp(right[0], right[1], s1), t2)
+            bottom_right = lerp(lerp(left[0], left[1], s2), lerp(right[0], right[1], s2), t2)
+            bottom_left = lerp(lerp(left[0], left[1], s2), lerp(right[0], right[1], s2), t1)
+            
+            # Create a separate overlay image
+            overlay = display_frame.copy()
+
+            # Draw the filled polygon on the overlay
+            corners = np.array([top_left, top_right, bottom_right, bottom_left], dtype=np.int32)
+            cv2.fillPoly(overlay, [corners], (0, 0, 255))
+
+            # Define transparency (alpha). 0.0 is fully transparent, 1.0 is fully opaque
+            alpha = 0.5  # This gives 50% transparency
+
+            # Blend the overlay with the original image
+            cv2.addWeighted(overlay, alpha, display_frame, 1 - alpha, 0, display_frame)
         
-        warped_grid = cv2.warpPerspective(grid_img, self.transform_matrix, 
-                                        (frame.shape[1], frame.shape[0]))
-        
-        blend = cv2.addWeighted(frame, 1, warped_grid, 0.7, 0)
-        return blend
+        return display_frame
     
     def draw_on_frame(self, frame):
         display_frame = frame.copy()
@@ -222,7 +303,34 @@ class GridDrawer:
         
         return display_frame
 
-def track_motion(camera1_id, camera2_id, grid):
+class KeyboardListener:
+    def __init__(self, command_queue):
+        self.running = True
+        self.command_queue = command_queue
+        self.listener = keyboard.Listener(on_press=self.on_press)
+        self.listener.start()
+
+    def on_press(self, key):
+        try:
+            if key == Key.enter:
+                # Send command to main thread
+                self.command_queue.put('track')
+            elif key == Key.esc:
+                # Send exit command
+                self.command_queue.put('exit')
+                self.running = False
+                return False  # Stop listener
+            elif hasattr(key, 'char') and key.char == '`':
+                # Send abort command
+                self.command_queue.put('abort')
+        except AttributeError:
+            pass
+
+    def stop(self):
+        self.running = False
+        self.listener.stop()
+
+def track_motion(camera1_id, camera2_id, grid, command_queue):
     # Start camera threads
     camera1 = CameraThread(camera1_id)
     camera2 = CameraThread(camera2_id)
@@ -256,6 +364,19 @@ def track_motion(camera1_id, camera2_id, grid):
     display_frame2 = None
 
     while True:
+        # Check for abort command
+        try:
+            command = command_queue.get_nowait()
+            if command in ['abort', 'exit']:
+                print("Motion tracking stopped")
+                camera1.stop()
+                camera2.stop()
+                camera1.join()
+                camera2.join()
+                return None if command == 'abort' else 'exit'
+        except Empty:
+            pass
+
         # Get current frames from queues
         current_frame1 = camera1.get_frame()
         current_frame2 = camera2.get_frame()
@@ -294,9 +415,6 @@ def track_motion(camera1_id, camera2_id, grid):
             center = ((x+w//2), (y+h//2))
             if center[1] > line_position:
                 triggered = True
-                
-            cv2.putText(current_frame1, f'Motion ({(x+w//2)}, {(y+h//2)})', (x, y - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         
         # Check for motion in camera 2
         motion_detected2 = len([cnt for cnt in contours2 if cv2.contourArea(cnt) > min_size2]) > 0
@@ -362,7 +480,7 @@ def track_motion(camera1_id, camera2_id, grid):
             
         # Project grid onto camera 2
         display_frame2 = grid.draw_on_frame(display_frame2)
-        
+
         # Show frames
         cv2.imshow('Camera 1', current_frame1)
         cv2.imshow('Camera 2', display_frame2)
@@ -370,38 +488,9 @@ def track_motion(camera1_id, camera2_id, grid):
         # Update previous frames
         prev_frame1 = gray1
         prev_frame2 = gray2
-        
-        # Break loop with 'q' key
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            camera1.stop()
-            camera2.stop()
-            camera1.join()
-            camera2.join()
-            return None
 
-class KeyboardListener:
-    def __init__(self, command_queue):
-        self.running = True
-        self.command_queue = command_queue
-        self.listener = keyboard.Listener(on_press=self.on_press)
-        self.listener.start()
-
-    def on_press(self, key):
-        try:
-            if key == Key.enter:
-                # Send command to main thread
-                self.command_queue.put('track')
-            elif key == Key.esc:
-                # Send exit command
-                self.command_queue.put('exit')
-                self.running = False
-                return False  # Stop listener
-        except AttributeError:
-            pass
-
-    def stop(self):
-        self.running = False
-        self.listener.stop()
+        # Render frames on windows
+        cv2.waitKey(1)
 
 if __name__ == "__main__":
     # Create command queue for thread communication
@@ -418,13 +507,6 @@ if __name__ == "__main__":
     cv2.createTrackbar('Min Size', 'Camera 2', 25, 100, nothing)
 
     # Define keyboard layout
-    """
-    keyboard_layout = np.array([
-        ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
-        ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'backspace'],
-        ['z', 'x', 'c', 'v', 'b', 'n', 'm', 'space', 'space', 'space']
-    ])
-    """
     keyboard_layout = np.array([
         ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
         ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', Key.backspace],
@@ -432,7 +514,7 @@ if __name__ == "__main__":
     ])
 
     # Create mouse callback
-    grid = GridDrawer(11, 3)
+    grid = GridDrawer(10, 3)
     cv2.setMouseCallback("Camera 2", grid.mouse_callback)
 
     # Load standby image
@@ -456,18 +538,17 @@ if __name__ == "__main__":
         # Check for commands from keyboard listener
         try:
             command = command_queue.get_nowait()
-
             if command == 'track':
-                position = track_motion(0, 2, grid)  # Camera IDs & grid class
-                if position:
-                    print(f"{position}")
-                    virtual_keyboard.press(keyboard_layout[position])
-                    time.sleep(int.from_bytes(os.urandom(1), 'big') / 1000)
-                    virtual_keyboard.release(keyboard_layout[position])
-
+                result = track_motion(0, 2, grid, command_queue)  # Pass command_queue to track_motion
+                if result == 'exit':
+                    running = False
+                elif result is not None:
+                    print(f"{result}")
+                    virtual_keyboard.press(keyboard_layout[result])
+                    time.sleep(200 + int.from_bytes(os.urandom(1), 'big') / 1000)
+                    virtual_keyboard.release(keyboard_layout[result])
             elif command == 'exit':
                 running = False
-
         except Empty:
             pass
 

@@ -390,9 +390,7 @@ def track_motion(camera1_id, camera2_id, grid, command_queue):
         
         threshold2 = cv2.getTrackbarPos('Threshold', 'Camera 2')
         min_size2 = cv2.getTrackbarPos('Min Size', 'Camera 2')
-        max_size2 = cv2.getTrackbarPos('Max Size', 'Camera 2')
-        max_width2 = max_size2/width2
-        max_height2 = max_size2/height2
+        max_size2 = cv2.getTrackbarPos('Max Size', 'Camera 2') * width2 * height2
         
         line_position_percent = cv2.getTrackbarPos('Trigger', 'Camera 1')
         line_position = int((line_position_percent / 100) * height1)
@@ -447,7 +445,7 @@ def track_motion(camera1_id, camera2_id, grid, command_queue):
             largest_contour3 = None
             for contour in contours3:
                 contour_area = cv2.contourArea(contour)
-                if contour_area < min_size2:
+                if contour_area < min_size2 or contour_area > max_size2:
                     continue
                 
                 if contour_area > largest_area3:
@@ -458,9 +456,6 @@ def track_motion(camera1_id, camera2_id, grid, command_queue):
             if largest_contour3 is not None:
                 x, y, w, h = cv2.boundingRect(largest_contour3)
                 cv2.rectangle(display_frame2, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-                if w > max_width2 or h > max_height2:
-                    continue
 
                 center = ((x+w//2), (y+h//2))
                 cv2.putText(display_frame2, f'Motion {center}', (x, y - 10),
@@ -552,8 +547,9 @@ if __name__ == "__main__":
                 elif result is not None:
                     print(f"{result}")
                     virtual_keyboard.press(keyboard_layout[result])
-                    time.sleep(200 + int.from_bytes(os.urandom(1), 'big') / 1000)
+                    time.sleep(0.2 + int.from_bytes(os.urandom(1), 'big') / 1000)
                     virtual_keyboard.release(keyboard_layout[result])
+                    print("why didn't it work")
             elif command == 'exit':
                 running = False
         except Empty:

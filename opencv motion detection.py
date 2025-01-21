@@ -1,8 +1,8 @@
-import cv2
-import numpy as np
 import time
 import threading
 from queue import Queue
+import cv2
+import numpy as np
 
 def nothing(x):
     pass

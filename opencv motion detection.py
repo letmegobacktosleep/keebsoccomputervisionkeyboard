@@ -371,15 +371,42 @@ def track_motion(camera1_id, camera2_id, grid):
         prev_frame1 = gray1
         prev_frame2 = gray2
         
-        # Break loop with 'Escape' key
-        if cv2.waitKey(1) & 0xFF == 27:
+        # Break loop with 'q' key
+        if cv2.waitKey(1) & 0xFF == ord('q'):
             camera1.stop()
             camera2.stop()
             camera1.join()
             camera2.join()
             return None
 
+class KeyboardListener:
+    def __init__(self, command_queue):
+        self.running = True
+        self.command_queue = command_queue
+        self.listener = keyboard.Listener(on_press=self.on_press)
+        self.listener.start()
+
+    def on_press(self, key):
+        try:
+            if key == Key.enter:
+                # Send command to main thread
+                self.command_queue.put('track')
+            elif key == Key.esc:
+                # Send exit command
+                self.command_queue.put('exit')
+                self.running = False
+                return False  # Stop listener
+        except AttributeError:
+            pass
+
+    def stop(self):
+        self.running = False
+        self.listener.stop()
+
 if __name__ == "__main__":
+    # Create command queue for thread communication
+    command_queue = Queue()
+
     # Create windows and sliders
     cv2.namedWindow('Camera 1')
     cv2.createTrackbar('Threshold', 'Camera 1', 25, 100, nothing)
@@ -390,11 +417,18 @@ if __name__ == "__main__":
     cv2.createTrackbar('Threshold', 'Camera 2', 50, 100, nothing)
     cv2.createTrackbar('Min Size', 'Camera 2', 25, 100, nothing)
 
-    # Define keyboard keys
+    # Define keyboard layout
+    """
     keyboard_layout = np.array([
         ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
         ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'backspace'],
         ['z', 'x', 'c', 'v', 'b', 'n', 'm', 'space', 'space', 'space']
+    ])
+    """
+    keyboard_layout = np.array([
+        ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+        ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', Key.backspace],
+        ['z', 'x', 'c', 'v', 'b', 'n', 'm', Key.space, Key.space, Key.space]
     ])
 
     # Create mouse callback
@@ -410,20 +444,35 @@ if __name__ == "__main__":
     # Create keyboard controller
     virtual_keyboard = Controller()
 
-    while True:
-        key = cv2.waitKey(1000)
+    # Create and start keyboard listener
+    keyboard_listener = KeyboardListener(command_queue)
 
-        if key == 13:  # Enter key
-            position = track_motion(0, 2, grid)  # Camera IDs & grid class
-            
-            if position:
-                print(f"{position}")
-            #virtual_keyboard.press(keyboard_layout[position])
-            #time.sleep(int.from_bytes(os.urandom(1), 'big') / 1000)
-            #virtual_keyboard.release(keyboard_layout[position])
-            else:
-                print("Motion tracking was aborted")
-                
-        elif key == 27:  # Escape key
-            cv2.destroyAllWindows()
-            break
+    # Main loop
+    running = True
+    while running:
+        # Handle OpenCV window updates
+        cv2.waitKey(1)
+
+        # Check for commands from keyboard listener
+        try:
+            command = command_queue.get_nowait()
+
+            if command == 'track':
+                position = track_motion(0, 2, grid)  # Camera IDs & grid class
+                if position:
+                    print(f"{position}")
+                    virtual_keyboard.press(keyboard_layout[position])
+                    time.sleep(int.from_bytes(os.urandom(1), 'big') / 1000)
+                    virtual_keyboard.release(keyboard_layout[position])
+
+            elif command == 'exit':
+                running = False
+
+        except Empty:
+            pass
+
+        time.sleep(0.1)  # Reduce CPU usage
+
+    # Cleanup
+    keyboard_listener.stop()
+    cv2.destroyAllWindows()

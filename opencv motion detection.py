@@ -47,6 +47,15 @@ class CameraThread(threading.Thread):
         super().__init__()
         self.camera_id = camera_id
         self.cap = cv2.VideoCapture(camera_id)
+
+        # Ensure camera is opened successfully
+        if not self.cap.isOpened():
+            raise RuntimeError(f"Failed to open camera {camera_id}")
+        
+        # Essential camera settings
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimize internal buffer
+
+        # Use a queue to prevent frame drops
         self.frame_queue = Queue(maxsize=2)
         self.running = True
         self._stop_lock = threading.Lock()
@@ -77,7 +86,7 @@ class CameraThread(threading.Thread):
 
     def get_frame(self):
         try:
-            return self.frame_queue.get_nowait()
+            return self.frame_queue.get(timeout=0.01) # Wait up to 10ms for a frame (reduce dropped frames)
         except Empty:
             return None
 
@@ -347,10 +356,8 @@ def track_motion(camera1_id, camera2_id, grid, command_queue):
     prev_frame2 = cv2.GaussianBlur(prev_frame2, (21, 21), 0)
     
     # Get frame dimensions
-    height1 = prev_frame1.shape[0]
-    width1 = prev_frame1.shape[1]
-    height2 = prev_frame2.shape[0]
-    width2 = prev_frame2.shape[1]
+    height1, width1 = prev_frame1.shape
+    height2, width2 = prev_frame2.shape
     
     # Store reference frame from camera 2
     reference_frame2 = prev_frame2.copy()

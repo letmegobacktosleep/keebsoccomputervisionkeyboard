@@ -26,7 +26,7 @@ def compare_frames(prev_frame, current_frame, threshold):
     """
     # Process current frame
     gray = cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (21, 21), 0)
+    gray = cv2.GaussianBlur(gray, (11, 11), 0)
     
     # Calculate difference between current and previous frame
     frame_diff = cv2.absdiff(prev_frame, gray)

@@ -2,7 +2,7 @@
 import os
 import time
 import threading
-from queue import Queue
+from queue import Queue, Empty, Full
 # Import 3rd party libraries
 import cv2
 import numpy as np
@@ -41,12 +41,6 @@ def compare_frames(prev_frame, current_frame, threshold):
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     return gray, thresh, contours
-
-import cv2
-import numpy as np
-import time
-import threading
-from queue import Queue, Empty, Full
 
 class CameraThread(threading.Thread):
     def __init__(self, camera_id):

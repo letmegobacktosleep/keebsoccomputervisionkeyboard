@@ -2,7 +2,7 @@
 import os
 import time
 import threading
-from queue import Queue, Empty, Full
+from queue import Queue
 # Import 3rd party libraries
 import cv2
 import numpy as np
@@ -41,6 +41,12 @@ def compare_frames(prev_frame, current_frame, threshold):
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     return gray, thresh, contours
+
+import cv2
+import numpy as np
+import time
+import threading
+from queue import Queue, Empty, Full
 
 class CameraThread(threading.Thread):
     def __init__(self, camera_id):
@@ -326,36 +332,28 @@ class KeyboardListener:
 
 def track_motion(camera1_id, camera2_id, grid, command_queue):
     # Start camera threads
-    camera1 = CameraThread(camera1_id)
     camera2 = CameraThread(camera2_id)
-    camera1.start()
     camera2.start()
 
     # Wait for first frames
     while True:
-        frame1 = camera1.get_frame()
-        frame2 = camera2.get_frame()
-        if frame1 is not None and frame2 is not None:
+        frame = camera2.get_frame()
+        if frame is not None:
             break
         time.sleep(0.1)
 
     # Initialize previous frames
-    prev_frame1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
-    prev_frame1 = cv2.GaussianBlur(prev_frame1, (21, 21), 0)
-    
-    prev_frame2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
-    prev_frame2 = cv2.GaussianBlur(prev_frame2, (21, 21), 0)
+    prev_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    prev_frame = cv2.GaussianBlur(prev_frame, (21, 21), 0)
     
     # Get frame dimensions
-    height1 = prev_frame1.shape[0]
-    width1 = prev_frame1.shape[1]
-    height2 = prev_frame2.shape[0]
-    width2 = prev_frame2.shape[1]
+    height2 = prev_frame.shape[0]
+    width2 = prev_frame.shape[1]
     
-    # Store reference frame from camera 2
-    reference_frame2 = prev_frame2.copy()
-    reference_frame2_counter = 0
-    display_frame2 = None
+    # Store reference frame from camera
+    reference_frame = prev_frame.copy()
+    reference_frame_counter = 0
+    display_frame = None
 
     while True:
         # Check for abort command
@@ -363,126 +361,91 @@ def track_motion(camera1_id, camera2_id, grid, command_queue):
             command = command_queue.get_nowait()
             if command in ['abort', 'exit']:
                 print("Motion tracking stopped")
-                camera1.stop()
                 camera2.stop()
-                camera1.join()
                 camera2.join()
                 return None if command == 'abort' else 'exit'
         except Empty:
             pass
 
         # Get current frames from queues
-        current_frame1 = camera1.get_frame()
-        current_frame2 = camera2.get_frame()
+        current_frame = camera2.get_frame()
         
-        if current_frame1 is None or current_frame2 is None:
+        if current_frame is None:
             continue
 
         # Get current threshold values
-        threshold1 = cv2.getTrackbarPos('Threshold', 'Camera 1')
-        min_size1 = cv2.getTrackbarPos('Min Size', 'Camera 1')
-        
-        threshold2 = cv2.getTrackbarPos('Threshold', 'Camera 2')
-        min_size2 = cv2.getTrackbarPos('Min Size', 'Camera 2')
-        max_size2 = cv2.getTrackbarPos('Max Size', 'Camera 2')
-        
-        line_position_percent = cv2.getTrackbarPos('Trigger', 'Camera 1')
-        line_position = int((line_position_percent / 100) * height1)
+        threshold = cv2.getTrackbarPos('Threshold', 'Camera')
+        aaaaaaaa = cv2.getTrackbarPos('AAAAAAAA', 'Camera') ** 2
+        min_size = cv2.getTrackbarPos('Min Size', 'Camera') ** 2
+        max_size = cv2.getTrackbarPos('Max Size', 'Camera') ** 2
         
         # Compare frames for both cameras
-        gray1, _, contours1 = compare_frames(prev_frame1, current_frame1, threshold1)
-        gray2, _, contours2 = compare_frames(prev_frame2, current_frame2, threshold2)
+        gray2, _, contours1 = compare_frames(prev_frame, current_frame, threshold)
+
+        # Copy frame for camera
+        display_frame = current_frame.copy()
         
-        # Draw horizontal line
-        cv2.line(current_frame1, (0, line_position), (width1, line_position), (0, 255, 255), 2)
+        # Check for motion in camera
+        motion_detected2 = len([cnt for cnt in contours1 if cv2.contourArea(cnt) > aaaaaaaa]) > 0
         
-        triggered = False
-        display_frame2 = current_frame2.copy()
-        
-        # Process contours for camera 1
-        for contour in contours1:
-            if cv2.contourArea(contour) < min_size1:
-                continue
-                
-            x, y, w, h = cv2.boundingRect(contour)
-            cv2.rectangle(current_frame1, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            
-            center = ((x+w//2), (y+h//2))
-            if center[1] > line_position:
-                triggered = True
-        
-        # Check for motion in camera 2
-        motion_detected2 = len([cnt for cnt in contours2 if cv2.contourArea(cnt) > min_size2]) > 0
-        
-        # Update reference frame when no motion in camera 2
+        # Update reference frame when no motion in camera
         if not motion_detected2:
-            if reference_frame2_counter > 5:
-                reference_frame2 = gray2.copy()
-                cv2.putText(display_frame2, "Reference Frame Captured", (10, 70),
+            if reference_frame_counter > 5:
+                reference_frame = gray2.copy()
+                cv2.putText(display_frame, "Reference Frame Captured", (10, 70),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
             else:
-                reference_frame2_counter += 1
+                reference_frame_counter += 1
         else:
-            reference_frame2_counter = 0
+            reference_frame_counter = 0
 
-        # Display status text
-        status_text = "Triggered" if triggered else "Waiting"
-        cv2.putText(current_frame1, status_text, (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) if triggered else (0, 255, 0), 2)
+        # Check for motion in camera against reference frame
+        _, _, contours2 = compare_frames(reference_frame, current_frame, threshold)
 
-        # Check for motion in camera 2 against reference frame
-        if triggered:
-            _, _, contours3 = compare_frames(reference_frame2, current_frame2, threshold2)
-
-            # Find the largest contour
-            largest_area3 = 0
-            largest_contour3 = None
-            for contour in contours3:
-                contour_area = cv2.contourArea(contour)
-                if contour_area < min_size2 or contour_area > max_size2:
-                    continue
-                
-                if contour_area > largest_area3:
-                    largest_area3 = contour_area
-                    largest_contour3 = contour
+        # Find the largest contour
+        largest_area2 = 0
+        largest_contour2 = None
+        for contour in contours2:
+            contour_area = cv2.contourArea(contour)
+            if contour_area < min_size or contour_area > max_size:
+                continue
             
-            # If there is a contour with area greater than the minimum
-            if largest_contour3 is not None:
-                x, y, w, h = cv2.boundingRect(largest_contour3)
-                cv2.rectangle(display_frame2, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            if contour_area > largest_area2:
+                largest_area2 = contour_area
+                largest_contour2 = contour
+        
+        # If there is a contour with area greater than the minimum
+        if largest_contour2 is not None:
+            x, y, w, h = cv2.boundingRect(largest_contour2)
+            cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-                center = ((x+w//2), (y+h//2))
-                cv2.putText(display_frame2, f'Motion {center}', (x, y - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                
-                # Get the grid coordinates
-                grid_coordinate = grid.get_grid_coordinate(center[0], center[1])
-
-                if grid_coordinate is not None:
-                    # Project grid onto camera 2
-                    display_frame2 = grid.draw_on_frame(display_frame2)
-                    
-                    cv2.imshow('Camera 1', current_frame1)
-                    cv2.imshow('Camera 2', display_frame2)
-                    cv2.waitKey(1)
-
-                    # Stop cameras and return result
-                    camera1.stop()
-                    camera2.stop()
-                    camera1.join()
-                    camera2.join()
-                    return grid_coordinate
+            center = ((x+w//2), (y+h//2))
+            cv2.putText(display_frame, f'Motion {center}', (x, y - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             
-        # Project grid onto camera 2
-        display_frame2 = grid.draw_on_frame(display_frame2)
+            # Get the grid coordinates
+            grid_coordinate = grid.get_grid_coordinate(center[0], center[1])
+
+            if grid_coordinate is not None:
+                # Project grid onto camera
+                display_frame = grid.draw_on_frame(display_frame)
+                
+                cv2.imshow('Camera', display_frame)
+                cv2.waitKey(1)
+
+                # Stop cameras and return result
+                camera2.stop()
+                camera2.join()
+                return grid_coordinate
+            
+        # Project grid onto camera
+        display_frame = grid.draw_on_frame(display_frame)
 
         # Show frames
-        cv2.imshow('Camera 1', current_frame1)
-        cv2.imshow('Camera 2', display_frame2)
+        cv2.imshow('Camera', display_frame)
         
         # Update previous frames
-        prev_frame1 = gray1
-        prev_frame2 = gray2
+        prev_frame = gray2
 
         # Render frames on windows
         cv2.waitKey(1)
@@ -492,15 +455,11 @@ if __name__ == "__main__":
     command_queue = Queue()
 
     # Create windows and sliders
-    cv2.namedWindow('Camera 1')
-    cv2.createTrackbar('Threshold', 'Camera 1', 25, 100, nothing)
-    cv2.createTrackbar('Min Size', 'Camera 1', 25, 100, nothing)
-    cv2.createTrackbar('Trigger', 'Camera 1', 50, 100, nothing)
-
-    cv2.namedWindow('Camera 2')
-    cv2.createTrackbar('Threshold', 'Camera 2', 50, 100, nothing)
-    cv2.createTrackbar('Min Size', 'Camera 2', 25, 100, nothing)
-    cv2.createTrackbar('Max Size', 'Camera 2', 100000, 500000, nothing)
+    cv2.namedWindow('Camera')
+    cv2.createTrackbar('Threshold', 'Camera', 50, 100, nothing)
+    cv2.createTrackbar('AAAAAAAA', 'Camera', 5, 1000, nothing)
+    cv2.createTrackbar('Min Size', 'Camera', 30, 1000, nothing)
+    cv2.createTrackbar('Max Size', 'Camera', 100, 1000, nothing)
 
     # Define keyboard layout
     keyboard_layout = np.array([
@@ -511,12 +470,11 @@ if __name__ == "__main__":
 
     # Create mouse callback
     grid = GridDrawer(10, 3)
-    cv2.setMouseCallback("Camera 2", grid.mouse_callback)
+    cv2.setMouseCallback("Camera", grid.mouse_callback)
 
     # Load standby image
     standby_image = cv2.imread("./standby.png")
-    cv2.imshow('Camera 1', standby_image)
-    cv2.imshow('Camera 2', standby_image)
+    cv2.imshow('Camera', standby_image)
     cv2.waitKey(1)
 
     # Create keyboard controller
@@ -535,18 +493,16 @@ if __name__ == "__main__":
         try:
             command = command_queue.get_nowait()
             if command == 'track':
-                result = track_motion(0, 2, grid, command_queue)  # Pass command_queue to track_motion
+                result = track_motion(0, 0, grid, command_queue)  # Pass command_queue to track_motion
                 if result == 'exit':
                     running = False
                 elif result is not None:
-                    # Print result
                     print(f"{result}")
-                    # Press corresponding key in keyboard_layout
                     virtual_keyboard.press(keyboard_layout[result])
                     time.sleep(0.2 + int.from_bytes(os.urandom(1), 'big') / 1000)
                     virtual_keyboard.release(keyboard_layout[result])
-                    # Re-queue the 'track' command
-                    # self.command_queue.put('track') # Uncomment for consecutive keypresses
+                    # restart and wait for next moving object
+                    # self.command_queue.put('track')
             elif command == 'exit':
                 running = False
         except Empty:

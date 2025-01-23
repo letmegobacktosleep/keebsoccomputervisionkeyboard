@@ -86,7 +86,7 @@ class CameraThread(threading.Thread):
 
     def get_frame(self):
         try:
-            return self.frame_queue.get(timeout=0.01) # Wait up to 10ms for a frame (reduce dropped frames)
+            return self.frame_queue.get(timeout=0.001) # Wait up to 1ms for a frame
         except Empty:
             return None
 
@@ -387,11 +387,11 @@ def track_motion(camera1_id, camera2_id, grid, command_queue, loop_forever=False
 
         # Get current threshold values
         threshold1 = cv2.getTrackbarPos('Threshold', 'Camera 1')
-        min_size1 = cv2.getTrackbarPos('Min Size', 'Camera 1')
+        min_size1 = cv2.getTrackbarPos('Min Area', 'Camera 1')
         
         threshold2 = cv2.getTrackbarPos('Threshold', 'Camera 2')
-        min_size2 = cv2.getTrackbarPos('Min Size', 'Camera 2')
-        max_size2 = cv2.getTrackbarPos('Max Size', 'Camera 2')
+        min_size2 = cv2.getTrackbarPos('Min Area', 'Camera 2')
+        max_size2 = cv2.getTrackbarPos('Max Area', 'Camera 2') ** 2 # Square of value
         
         line_position_percent = cv2.getTrackbarPos('Trigger', 'Camera 1')
         line_position = int((line_position_percent / 100) * height1)
@@ -507,13 +507,13 @@ if __name__ == "__main__":
     # Create windows and sliders
     cv2.namedWindow('Camera 1')
     cv2.createTrackbar('Threshold', 'Camera 1', 25, 100, nothing)
-    cv2.createTrackbar('Min Size', 'Camera 1', 25, 100, nothing)
+    cv2.createTrackbar('Min Area', 'Camera 1', 25, 100, nothing)
     cv2.createTrackbar('Trigger', 'Camera 1', 50, 100, nothing)
 
     cv2.namedWindow('Camera 2')
     cv2.createTrackbar('Threshold', 'Camera 2', 50, 100, nothing)
-    cv2.createTrackbar('Min Size', 'Camera 2', 25, 100, nothing)
-    cv2.createTrackbar('Max Size', 'Camera 2', 100000, 500000, nothing)
+    cv2.createTrackbar('Min Area', 'Camera 2', 25, 100, nothing)
+    cv2.createTrackbar('Max Area', 'Camera 2', 300, 700, nothing)
 
     # Define keyboard layout
     keyboard_layout = np.array([

@@ -333,7 +333,7 @@ class KeyboardListener:
         self.running = False
         self.listener.stop()
 
-def track_motion(camera1_id, camera2_id, grid, command_queue):
+def track_motion(camera1_id, camera2_id, grid, command_queue, loop_forever=False):
     # Start camera threads
     camera1 = CameraThread(camera1_id)
     camera2 = CameraThread(camera2_id)
@@ -374,7 +374,7 @@ def track_motion(camera1_id, camera2_id, grid, command_queue):
                 camera2.stop()
                 camera1.join()
                 camera2.join()
-                return None if command == 'abort' else 'exit'
+                return command
         except Empty:
             pass
 
@@ -466,19 +466,25 @@ def track_motion(camera1_id, camera2_id, grid, command_queue):
                 grid_coordinate = grid.get_grid_coordinate(center[0], center[1])
 
                 if grid_coordinate is not None:
-                    # Project grid onto camera 2
-                    display_frame2 = grid.draw_on_frame(display_frame2)
-                    
-                    cv2.imshow('Camera 1', current_frame1)
-                    cv2.imshow('Camera 2', display_frame2)
-                    cv2.waitKey(1)
 
-                    # Stop cameras and return result
-                    camera1.stop()
-                    camera2.stop()
-                    camera1.join()
-                    camera2.join()
-                    return grid_coordinate
+                    # Press corresponding key in keyboard_layout
+                    virtual_keyboard.press(keyboard_layout[result])
+                    time.sleep(0.2 + int.from_bytes(os.urandom(1), 'big') / 1000)
+                    virtual_keyboard.release(keyboard_layout[result])
+
+                    if not loop_forever:
+                        # Project grid onto camera 2
+                        display_frame2 = grid.draw_on_frame(display_frame2)
+                        cv2.imshow('Camera 1', current_frame1)
+                        cv2.imshow('Camera 2', display_frame2)
+                        cv2.waitKey(1)
+
+                        # Stop cameras and return result
+                        camera1.stop()
+                        camera2.stop()
+                        camera1.join()
+                        camera2.join()
+                        return grid_coordinate
             
         # Project grid onto camera 2
         display_frame2 = grid.draw_on_frame(display_frame2)
@@ -542,18 +548,19 @@ if __name__ == "__main__":
         try:
             command = command_queue.get_nowait()
             if command == 'track':
-                result = track_motion(0, 2, grid, command_queue)  # Pass command_queue to track_motion
+                # ID: Camera 1 - trigger
+                # ID: Camera 2 - other camera
+                # Grid Drawer Class - prevent grid from resetting
+                # Command Queue Class - abort/exit commands
+                result = track_motion(0, 2, grid, command_queue)
                 if result == 'exit':
                     running = False
+                elif result == 'abort':
+                    pass
                 elif result is not None:
                     # Print result
                     print(f"{result}")
-                    # Press corresponding key in keyboard_layout
-                    virtual_keyboard.press(keyboard_layout[result])
-                    time.sleep(0.2 + int.from_bytes(os.urandom(1), 'big') / 1000)
-                    virtual_keyboard.release(keyboard_layout[result])
-                    # Re-queue the 'track' command
-                    # self.command_queue.put('track') # Uncomment for consecutive keypresses
+
             elif command == 'exit':
                 running = False
         except Empty:

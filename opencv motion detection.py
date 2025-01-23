@@ -550,9 +550,10 @@ if __name__ == "__main__":
             if command == 'track':
                 # ID: Camera 1 - trigger
                 # ID: Camera 2 - other camera
-                # Grid Drawer Class - prevent grid from resetting
-                # Command Queue Class - abort/exit commands
-                result = track_motion(0, 2, grid, command_queue)
+                # 
+                # 
+                # Whether to loop infinitely until track_motion is aborted
+                result = track_motion(0, 2, grid, command_queue, True)
                 if result == 'exit':
                     running = False
                 elif result == 'abort':

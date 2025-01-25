@@ -319,13 +319,13 @@ class KeyboardListener:
                 # Send command to main thread
                 self.command_queue.put('track')
             elif key == Key.esc:
+                # Send abort command
+                self.command_queue.put('abort')
+            elif hasattr(key, 'char') and key.char == '`':
                 # Send exit command
                 self.command_queue.put('exit')
                 self.running = False
                 return False  # Stop listener
-            elif hasattr(key, 'char') and key.char == '`':
-                # Send abort command
-                self.command_queue.put('abort')
         except AttributeError:
             pass
 

@@ -26,7 +26,7 @@ def compare_frames(prev_frame, current_frame, threshold):
     """
     # Process current frame
     gray = cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (21, 21), 0)
+    gray = cv2.GaussianBlur(gray, (11, 11), 0)
     
     # Calculate difference between current and previous frame
     frame_diff = cv2.absdiff(prev_frame, gray)
@@ -83,7 +83,7 @@ class CameraThread(threading.Thread):
 
     def get_frame(self):
         try:
-            return self.frame_queue.get_nowait()
+            return self.frame_queue.get(timeout=0.001)
         except Empty:
             return None
 
@@ -316,13 +316,13 @@ class KeyboardListener:
                 # Send command to main thread
                 self.command_queue.put('track')
             elif key == Key.esc:
+                # Send abort command
+                self.command_queue.put('abort')
+            elif hasattr(key, 'char') and key.char == '`':
                 # Send exit command
                 self.command_queue.put('exit')
                 self.running = False
                 return False  # Stop listener
-            elif hasattr(key, 'char') and key.char == '`':
-                # Send abort command
-                self.command_queue.put('abort')
         except AttributeError:
             pass
 
@@ -330,7 +330,7 @@ class KeyboardListener:
         self.running = False
         self.listener.stop()
 
-def track_motion(camera1_id, camera2_id, grid, command_queue):
+def track_motion(camera1_id, camera2_id, grid, command_queue, loop_forever=False):
     # Start camera threads
     camera2 = CameraThread(camera2_id)
     camera2.start()
@@ -363,7 +363,7 @@ def track_motion(camera1_id, camera2_id, grid, command_queue):
                 print("Motion tracking stopped")
                 camera2.stop()
                 camera2.join()
-                return None if command == 'abort' else 'exit'
+                return command
         except Empty:
             pass
 
@@ -427,16 +427,21 @@ def track_motion(camera1_id, camera2_id, grid, command_queue):
             grid_coordinate = grid.get_grid_coordinate(center[0], center[1])
 
             if grid_coordinate is not None:
-                # Project grid onto camera
-                display_frame = grid.draw_on_frame(display_frame)
-                
-                cv2.imshow('Camera', display_frame)
-                cv2.waitKey(1)
+                # Press corresponding key in keyboard_layout
+                virtual_keyboard.press(keyboard_layout[grid_coordinate])
+                time.sleep(0.5 + int.from_bytes(os.urandom(1), 'big') / 1000)
+                virtual_keyboard.release(keyboard_layout[grid_coordinate])
 
-                # Stop cameras and return result
-                camera2.stop()
-                camera2.join()
-                return grid_coordinate
+                if not loop_forever:
+                # Project grid onto camera
+                    display_frame = grid.draw_on_frame(display_frame)
+                    cv2.imshow('Camera', display_frame)
+                    cv2.waitKey(1)
+
+                    # Stop cameras and return result
+                    camera2.stop()
+                    camera2.join()
+                    return grid_coordinate
             
         # Project grid onto camera
         display_frame = grid.draw_on_frame(display_frame)
@@ -496,13 +501,11 @@ if __name__ == "__main__":
                 result = track_motion(0, 0, grid, command_queue)  # Pass command_queue to track_motion
                 if result == 'exit':
                     running = False
+                elif result == 'abort':
+                    pass
                 elif result is not None:
                     print(f"{result}")
-                    virtual_keyboard.press(keyboard_layout[result])
-                    time.sleep(0.2 + int.from_bytes(os.urandom(1), 'big') / 1000)
-                    virtual_keyboard.release(keyboard_layout[result])
-                    # restart and wait for next moving object
-                    # self.command_queue.put('track')
+
             elif command == 'exit':
                 running = False
         except Empty:

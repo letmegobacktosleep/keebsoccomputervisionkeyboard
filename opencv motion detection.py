@@ -86,7 +86,7 @@ class CameraThread(threading.Thread):
 
     def get_frame(self):
         try:
-            return self.frame_queue.get(timeout=0.001) # Wait up to 1ms for a frame
+            return self.frame_queue.get(timeout=0.01) # Wait up to 10ms for a frame
         except Empty:
             return None
 

@@ -471,6 +471,7 @@ def track_motion(camera1_id, camera2_id, grid, command_queue, loop_forever=False
                     virtual_keyboard.press(keyboard_layout[grid_coordinate])
                     time.sleep(0.2 + int.from_bytes(os.urandom(1), 'big') / 1000)
                     virtual_keyboard.release(keyboard_layout[grid_coordinate])
+                    time.sleep(0.5)
 
                     if not loop_forever:
                         # Project grid onto camera 2

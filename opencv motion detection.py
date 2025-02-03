@@ -103,11 +103,11 @@ class CameraThread(threading.Thread):
                 self.cap = None
 
 class GridDrawer:
-    def __init__(self, grid_size_x=5, grid_size_y=5):
+    def __init__(self, rows, cols):
         self.points = []
         self.max_points = 4
-        self.grid_size_x = grid_size_x
-        self.grid_size_y = grid_size_y
+        self.cols = cols
+        self.rows = rows
         self.transform_matrix = None
         self.inverse_matrix = None
         self.highlighted_cell = None
@@ -194,12 +194,12 @@ class GridDrawer:
         x_ratio = dist_left / (dist_left + dist_right)
         
         # Convert to grid coordinates
-        col = int(x_ratio * self.grid_size_x)
-        row = int(y_ratio * self.grid_size_y)
+        col = int(x_ratio * self.cols)
+        row = int(y_ratio * self.rows)
         
         # Clamp values to grid bounds
-        col = max(0, min(col, self.grid_size_x - 1))
-        row = max(0, min(row, self.grid_size_y - 1))
+        col = max(0, min(col, self.cols - 1))
+        row = max(0, min(row, self.rows - 1))
         
         self.highlighted_cell = (row, col)
         return self.highlighted_cell
@@ -221,16 +221,16 @@ class GridDrawer:
         left = (self.points[0], self.points[3])
         
         # Draw vertical lines
-        for i in range(self.grid_size_x + 1):
-            t = i / self.grid_size_x
+        for i in range(self.cols + 1):
+            t = i / self.cols
             # Get points on top and bottom edges
             p1 = lerp(top[0], top[1], t)
             p2 = lerp(bottom[1], bottom[0], t)  # Note reversed order for bottom
             cv2.line(display_frame, p1, p2, (0, 255, 0), 2)
         
         # Draw horizontal lines
-        for i in range(self.grid_size_y + 1):
-            t = i / self.grid_size_y
+        for i in range(self.rows + 1):
+            t = i / self.rows
             # Get points on left and right edges
             p1 = lerp(left[0], left[1], t)
             p2 = lerp(right[0], right[1], t)
@@ -241,10 +241,10 @@ class GridDrawer:
             row, col = self.highlighted_cell
             
             # Calculate corners of highlighted cell
-            t1 = col / self.grid_size_x
-            t2 = (col + 1) / self.grid_size_x
-            s1 = row / self.grid_size_y
-            s2 = (row + 1) / self.grid_size_y
+            t1 = col / self.cols
+            t2 = (col + 1) / self.cols
+            s1 = row / self.rows
+            s2 = (row + 1) / self.rows
             
             # Get the four corners of the cell
             top_left = lerp(lerp(left[0], left[1], s1), lerp(right[0], right[1], s1), t1)
@@ -296,7 +296,7 @@ class GridDrawer:
         if remaining > 0:
             message = f"Click {remaining} more points"
         else:
-            message = f"Next update: Point {self.counter} | Grid: {self.grid_size_x}x{self.grid_size_y}"
+            message = f"Next update: Point {self.counter} | Grid: {self.cols}x{self.rows}"
             if self.highlighted_cell is not None:
                 row, col = self.highlighted_cell
                 message += f" | Cell: ({row}, {col})"
@@ -517,14 +517,22 @@ if __name__ == "__main__":
     cv2.createTrackbar('Max Area', 'Camera 2', 300, 700, nothing)
 
     # Define keyboard layout
-    keyboard_layout = np.array([
-        ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
-        ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', Key.backspace],
-        ['z', 'x', 'c', 'v', 'b', 'n', 'm', Key.space, Key.space, Key.space]
-    ])
+    if False:
+        keyboard_layout = np.array([
+            ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+            ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', Key.backspace],
+            ['z', 'x', 'c', 'v', 'b', 'n', 'm', Key.space, Key.space, Key.space]
+        ])
+    else:
+        keyboard_layout = np.array([
+            ['7', '8', '9'],
+            ['4', '5', '6'],
+            ['1', '2', '3'],
+            ['0', Key.backspace, Key.backspace]
+        ])
 
     # Create mouse callback
-    grid = GridDrawer(10, 3)
+    grid = GridDrawer(*np.shape(keyboard_layout))
     cv2.setMouseCallback("Camera 2", grid.mouse_callback)
 
     # Load standby image

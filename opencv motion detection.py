@@ -333,7 +333,7 @@ class KeyboardListener:
         self.running = False
         self.listener.stop()
 
-def track_motion(camera1_id, camera2_id, grid, command_queue, loop_forever=False):
+def track_motion(camera1_id, camera2_id, grid, command_queue, loop_forever=False, vertical=True):
     # Start camera threads
     camera1 = CameraThread(camera1_id)
     camera2 = CameraThread(camera2_id)
@@ -394,14 +394,21 @@ def track_motion(camera1_id, camera2_id, grid, command_queue, loop_forever=False
         max_size2 = cv2.getTrackbarPos('Max Area', 'Camera 2') ** 2 # Square of value
         
         line_position_percent = cv2.getTrackbarPos('Trigger', 'Camera 1')
-        line_position = int((line_position_percent / 100) * height1)
+        if (vertical):
+            line_position = int((line_position_percent / 100) * height1)
+        else:
+            line_position = int((line_position_percent / 100) * width1)
         
         # Compare frames for both cameras
         gray1, _, contours1 = compare_frames(prev_frame1, current_frame1, threshold1)
         gray2, _, contours2 = compare_frames(prev_frame2, current_frame2, threshold2)
         
-        # Draw horizontal line
-        cv2.line(current_frame1, (0, line_position), (width1, line_position), (0, 255, 255), 2)
+        if (vertical):
+            # Draw horizontal line
+            cv2.line(current_frame1, (0, line_position), (width1, line_position), (0, 255, 255), 2)
+        else:
+            # Draw vertical line
+            cv2.line(current_frame1, (line_position, 0), (line_position, height1), (0, 255, 255), 2)
         
         triggered = False
         display_frame2 = current_frame2.copy()
@@ -415,8 +422,12 @@ def track_motion(camera1_id, camera2_id, grid, command_queue, loop_forever=False
             cv2.rectangle(current_frame1, (x, y), (x + w, y + h), (0, 255, 0), 2)
             
             center = ((x+w//2), (y+h//2))
-            if center[1] > line_position:
-                triggered = True
+            if (vertical):
+                if (center[1] > line_position):
+                    triggered = True
+            else:
+                if (center[0] > line_position):
+                    triggered = True
         
         # Check for motion in camera 2
         motion_detected2 = len([cnt for cnt in contours2 if cv2.contourArea(cnt) > min_size2]) > 0
@@ -562,7 +573,7 @@ if __name__ == "__main__":
                 # 
                 # 
                 # Whether to loop infinitely until track_motion is aborted
-                result = track_motion(0, 2, grid, command_queue, True)
+                result = track_motion(1, 0, grid, command_queue, True, vertical=True)
                 if result == 'exit':
                     running = False
                 elif result == 'abort':

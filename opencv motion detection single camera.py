@@ -223,7 +223,7 @@ class GridDrawer:
             # Get points on top and bottom edges
             p1 = lerp(top[0], top[1], t)
             p2 = lerp(bottom[1], bottom[0], t)  # Note reversed order for bottom
-            cv2.line(display_frame, p1, p2, (0, 255, 0), 2)
+            cv2.line(display_frame, p1, p2, (255, 255, 0), 2)
         
         # Draw horizontal lines
         for i in range(self.rows + 1):
@@ -231,7 +231,7 @@ class GridDrawer:
             # Get points on left and right edges
             p1 = lerp(left[0], left[1], t)
             p2 = lerp(right[0], right[1], t)
-            cv2.line(display_frame, p1, p2, (0, 255, 0), 2)
+            cv2.line(display_frame, p1, p2, (255, 255, 0), 2)
         
         # Highlight cell if center of motion was in the cell
         if self.highlighted_cell is not None:
@@ -270,23 +270,23 @@ class GridDrawer:
         if len(self.points) == self.max_points:
             display_frame = self.project_grid(display_frame)
         
-        # Draw points
-        for i, point in enumerate(self.points):
-            color = (0, 255, 255) if (len(self.points) == self.max_points and i == self.counter) else (0, 0, 255)
-            cv2.circle(display_frame, point, 5, color, -1)
-            cv2.putText(display_frame, str(i), 
-                       (point[0] + 10, point[1] + 10),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-            
         # Draw lines between points
         if len(self.points) > 1:
             for i in range(len(self.points) - 1):
                 cv2.line(display_frame, self.points[i], self.points[i + 1], 
-                        (255, 0, 0), 2)
+                        (255, 255, 0), 2)
                 
             if len(self.points) == self.max_points:
                 cv2.line(display_frame, self.points[-1], self.points[0], 
-                        (255, 0, 0), 2)
+                        (255, 255, 0), 2)
+                
+        # Draw points
+        for i, point in enumerate(self.points):
+            color = (0, 255, 255) if (len(self.points) == self.max_points and i == self.counter) else (0, 0, 255)
+            cv2.circle(display_frame, point, 7, color, -1)
+            cv2.putText(display_frame, str(i), 
+                       (point[0] + 10, point[1] + 10),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
         
         # Display status information
         remaining = self.max_points - len(self.points)
@@ -469,7 +469,7 @@ def track_motion(camera2_id, grid, command_queue, loop_forever=False):
                     movement_path[i],
                     movement_path[i+1],
                     (0, 0, 255),
-                    2
+                    3
                 )
             
         # Project grid onto camera

@@ -490,9 +490,9 @@ if __name__ == "__main__":
 
     # Create windows and sliders
     cv2.namedWindow('Camera')
-    cv2.createTrackbar('Threshold', 'Camera', 50, 100, nothing)
+    cv2.createTrackbar('Threshold', 'Camera', 25, 100, nothing)
     cv2.createTrackbar('AAAAAAAA', 'Camera', 5, 1000, nothing)
-    cv2.createTrackbar('Min Size', 'Camera', 30, 1000, nothing)
+    cv2.createTrackbar('Min Size', 'Camera', 25, 1000, nothing)
     cv2.createTrackbar('Max Size', 'Camera', 100, 1000, nothing)
 
     # Define keyboard layout

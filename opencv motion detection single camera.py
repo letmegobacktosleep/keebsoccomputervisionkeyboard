@@ -381,6 +381,8 @@ def track_motion(camera2_id, grid, command_queue, loop_forever=False):
         aaaaaaaa = cv2.getTrackbarPos('AAAAAAAA', 'Camera') ** 2
         min_size = cv2.getTrackbarPos('Min Size', 'Camera') ** 2
         max_size = cv2.getTrackbarPos('Max Size', 'Camera') ** 2
+        r_frame_timeout = cv2.getTrackbarPos('Ref Timeout', 'Camera')
+        n_frames_motion = cv2.getTrackbarPos('Min Frames', 'Camera')
         
         # Compare frames for both cameras
         gray2, _, contours1 = compare_frames(prev_frame, current_frame, threshold)
@@ -391,17 +393,22 @@ def track_motion(camera2_id, grid, command_queue, loop_forever=False):
         # Check for motion in camera
         motion_detected2 = len([cnt for cnt in contours1 if cv2.contourArea(cnt) > aaaaaaaa]) > 0
         
-        # Update reference frame when no motion in camera
+        # When no motion in camera
         if not motion_detected2:
-            if reference_frame_counter > 5:
+            
+            # No motion in last few frames
+            if reference_frame_counter > r_frame_timeout:
+
+                # Update reference frame
                 reference_frame = gray2.copy()
                 cv2.putText(display_frame, "Reference Frame Captured", (10, 70),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                 
-                if (len(movement_path) > 5): # AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-                    center = movement_path[0]
+                # If there are was motion in more than a few frames
+                if (len(movement_path) > n_frames_motion):
 
                     # Get highest coordinate (lowest Y value)
+                    center = movement_path[0]
                     for i in range(len(movement_path)):
                         if movement_path[i][1] < center[1]:
                             center = movement_path[i]
@@ -492,8 +499,10 @@ if __name__ == "__main__":
     cv2.namedWindow('Camera')
     cv2.createTrackbar('Threshold', 'Camera', 25, 100, nothing)
     cv2.createTrackbar('AAAAAAAA', 'Camera', 5, 1000, nothing)
-    cv2.createTrackbar('Min Size', 'Camera', 25, 1000, nothing)
+    cv2.createTrackbar('Min Size', 'Camera', 5, 1000, nothing)
     cv2.createTrackbar('Max Size', 'Camera', 100, 1000, nothing)
+    cv2.createTrackbar('Ref Timeout', 'Camera', 5, 10, nothing)
+    cv2.createTrackbar('Min Frames', 'Camera', 2, 10, nothing)
 
     # Define keyboard layout
     if False:

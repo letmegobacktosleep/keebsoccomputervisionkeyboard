@@ -42,12 +42,6 @@ def compare_frames(prev_frame, current_frame, threshold):
     
     return gray, thresh, contours
 
-import cv2
-import numpy as np
-import time
-import threading
-from queue import Queue, Empty, Full
-
 class CameraThread(threading.Thread):
     def __init__(self, camera_id):
         super().__init__()

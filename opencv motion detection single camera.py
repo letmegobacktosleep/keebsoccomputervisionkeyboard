@@ -2,7 +2,7 @@
 import os
 import time
 import threading
-from queue import Queue
+from queue import Queue, Empty, Full
 # Import 3rd party libraries
 import cv2
 import numpy as np

@@ -430,6 +430,7 @@ def track_motion(camera2_id, grid, command_queue, loop_forever=False):
                         virtual_keyboard.release(keyboard_layout[grid_coordinate])
 
                         if not loop_forever:
+
                             # Project grid onto camera
                             display_frame = grid.draw_on_frame(display_frame)
                             cv2.imshow('Camera', display_frame)
@@ -530,7 +531,7 @@ if __name__ == "__main__":
         keyboard_layout = np.array([
             ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
             ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', Key.backspace],
-            ['z', 'x', 'c', 'v', 'b', 'n', 'm', Key.space, Key.space, Key.space]
+            ['z', 'x', 'c', 'v', 'b', 'n', 'm', Key.space, Key.space, Key.backspace]
         ])
     else:
         keyboard_layout = np.array([

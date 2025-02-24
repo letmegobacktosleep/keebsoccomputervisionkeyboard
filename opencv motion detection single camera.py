@@ -387,13 +387,17 @@ def track_motion(camera2_id, grid, command_queue, loop_forever=False):
         
         # Check for motion in camera
         motion_detected2 = False
-        for cnt in contours1:
-            if cv2.contourArea(cnt) > aaaaaaaa:
-                x, y, w, h = cv2.boundingRect(cnt)
-
-                cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        for contour in contours1:
+            if cv2.contourArea(contour) > aaaaaaaa:
+                x, y, w, h = cv2.boundingRect(contour)
                 
+                # Above bottom threshold
                 if y < bottom_threshold:
+
+                    # Show rectangle
+                    cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+                    # Set to true
                     motion_detected2 = True
         
         # When no motion in camera
@@ -454,19 +458,18 @@ def track_motion(camera2_id, grid, command_queue, loop_forever=False):
             contour_area = cv2.contourArea(contour)
             if contour_area < min_size or contour_area > max_size:
                 continue
-
+            
+            # Is bigger than previous largest contour & above threshold
             x, y, w, h = cv2.boundingRect(contour)
             if (contour_area > largest_area2) and (y < bottom_threshold):
                 largest_area2 = contour_area
                 largest_contour2 = contour
                 
         
-        # If there is a contour with area greater than the minimum
+        # If there is a valid contour
         if largest_contour2 is not None:
             x, y, w, h = cv2.boundingRect(largest_contour2)
             center = ((x+w//2), (y+h//2))
-
-            print("YEET")
 
             # Draw box
             cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
@@ -477,7 +480,13 @@ def track_motion(camera2_id, grid, command_queue, loop_forever=False):
             movement_path.append(center)
 
         # Draw bottom threshold
-        cv2.line(display_frame, (0, bottom_threshold), (width2, bottom_threshold), (0, 255, 0), 2)
+        cv2.line(
+            display_frame, 
+            (0,      bottom_threshold), 
+            (width2, bottom_threshold), 
+            (0, 255, 0), 
+            3
+            )
 
         # Draw movement path
         if len(movement_path) > 0:

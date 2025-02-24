@@ -377,6 +377,7 @@ def track_motion(camera2_id, grid, command_queue, loop_forever=False):
         max_size = cv2.getTrackbarPos('Max Size', 'Camera') ** 2
         r_frame_timeout = cv2.getTrackbarPos('Ref Timeout', 'Camera')
         n_frames_motion = cv2.getTrackbarPos('Min Frames', 'Camera')
+        bottom_threshold = int(cv2.getTrackbarPos('BOTTOM', 'Camera') * height2 / 100)
         
         # Compare frames for both cameras
         gray2, _, contours1 = compare_frames(prev_frame, current_frame, threshold)
@@ -453,14 +454,19 @@ def track_motion(camera2_id, grid, command_queue, loop_forever=False):
         # If there is a contour with area greater than the minimum
         if largest_contour2 is not None:
             x, y, w, h = cv2.boundingRect(largest_contour2)
-            cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-            center = ((x+w//2), (y+h//2))
-            cv2.putText(display_frame, f'Motion {center}', (x, y - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            if (y < bottom_threshold):
+                cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+                center = ((x+w//2), (y+h//2))
+                cv2.putText(display_frame, f'Motion {center}', (x, y - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             
-            # Add to movement path
-            movement_path.append(center)
+                # Add to movement path
+                movement_path.append(center)
+
+        # Draw bottom threshold
+        cv2.line(display_frame, (0, bottom_threshold), (width2, bottom_threshold), (0, 255, 0), 2)
 
         # Draw movement path
         if len(movement_path) > 0:
@@ -497,9 +503,10 @@ if __name__ == "__main__":
     cv2.createTrackbar('Max Size', 'Camera', 100, 1000, nothing)
     cv2.createTrackbar('Ref Timeout', 'Camera', 5, 10, nothing)
     cv2.createTrackbar('Min Frames', 'Camera', 2, 10, nothing)
+    cv2.createTrackbar('BOTTOM', 'Camera', 50, 100, nothing)
 
     # Define keyboard layout
-    if False:
+    if True:
         keyboard_layout = np.array([
             ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
             ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', Key.backspace],

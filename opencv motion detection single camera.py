@@ -386,7 +386,15 @@ def track_motion(camera2_id, grid, command_queue, loop_forever=False):
         display_frame = current_frame.copy()
         
         # Check for motion in camera
-        motion_detected2 = len([cnt for cnt in contours1 if cv2.contourArea(cnt) > aaaaaaaa]) > 0
+        motion_detected2 = False
+        for cnt in contours1:
+            if cv2.contourArea(cnt) > aaaaaaaa:
+                x, y, w, h = cv2.boundingRect(cnt)
+
+                cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                
+                if y < bottom_threshold:
+                    motion_detected2 = True
         
         # When no motion in camera
         if not motion_detected2:
@@ -446,24 +454,27 @@ def track_motion(camera2_id, grid, command_queue, loop_forever=False):
             contour_area = cv2.contourArea(contour)
             if contour_area < min_size or contour_area > max_size:
                 continue
-            
-            if contour_area > largest_area2:
+
+            x, y, w, h = cv2.boundingRect(contour)
+            if (contour_area > largest_area2) and (y < bottom_threshold):
                 largest_area2 = contour_area
                 largest_contour2 = contour
+                
         
         # If there is a contour with area greater than the minimum
         if largest_contour2 is not None:
             x, y, w, h = cv2.boundingRect(largest_contour2)
+            center = ((x+w//2), (y+h//2))
 
-            if (y < bottom_threshold):
-                cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            print("YEET")
 
-                center = ((x+w//2), (y+h//2))
-                cv2.putText(display_frame, f'Motion {center}', (x, y - 10),
+            # Draw box
+            cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
+            cv2.putText(display_frame, f'Motion {center}', (x, y - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            
-                # Add to movement path
-                movement_path.append(center)
+        
+            # Add to movement path
+            movement_path.append(center)
 
         # Draw bottom threshold
         cv2.line(display_frame, (0, bottom_threshold), (width2, bottom_threshold), (0, 255, 0), 2)

@@ -109,84 +109,51 @@ class GridDrawer:
             if len(self.points) < self.max_points:
                 self.points.append((x, y))
                 if len(self.points) == self.max_points:
+                    self._compute_transform_matrices()
                     self.counter = 0
             else:
                 self.points[self.counter] = (x, y)
                 self.counter = (self.counter + 1) % self.max_points
+                self._compute_transform_matrices()
+    
+    def _compute_transform_matrices(self):
+        """Compute perspective transformation matrices."""
+        if len(self.points) != 4:
+            return
+        
+        # Source points (in clockwise order starting from top-left)
+        src_points = np.array(self.points, dtype=np.float32)
+        
+        # Destination points (normalized grid in rectangle form)
+        dst_points = np.array([
+            [0, 0],                  # Top-left
+            [self.cols, 0],          # Top-right
+            [self.cols, self.rows],  # Bottom-right
+            [0, self.rows]           # Bottom-left
+        ], dtype=np.float32)
+        
+        # Compute the perspective transformation matrix
+        self.transform_matrix = cv2.getPerspectiveTransform(src_points, dst_points)
+        self.inverse_matrix = cv2.getPerspectiveTransform(dst_points, src_points)
     
     def get_grid_coordinate(self, x, y):
-        """Convert screen coordinates to grid coordinates using linear interpolation."""
-        if len(self.points) != 4:
+        """Convert screen coordinates to grid coordinates using perspective transformation."""
+        if len(self.points) != 4 or self.transform_matrix is None:
             return None
             
-        # Helper function for inverse lerp
-        def inverse_lerp(start, end, point):
-            # Returns how far point is between start and end (0 to 1)
-            if abs(end - start) < 0.0001:  # Avoid division by zero
-                return 0
-            return (point - start) / (end - start)
-        
-        def point_to_line_distance(p, a, b):
-            # Returns distance from point p to line segment ab
-            ax, ay = a
-            bx, by = b
-            px, py = p
-            
-            # Vector from a to b
-            abx = bx - ax
-            aby = by - ay
-            
-            # Vector from a to p
-            apx = px - ax
-            apy = py - ay
-            
-            # Length of ab squared
-            ab_squared = abx * abx + aby * aby
-            
-            if ab_squared == 0:
-                return ((px - ax) ** 2 + (py - ay) ** 2) ** 0.5
-                
-            # Calculate dot product
-            ap_ab = apx * abx + apy * aby
-            
-            # Get normalized distance along line
-            t = ap_ab / ab_squared
-            
-            if t < 0:
-                return ((px - ax) ** 2 + (py - ay) ** 2) ** 0.5
-            elif t > 1:
-                return ((px - bx) ** 2 + (py - by) ** 2) ** 0.5
-                
-            # Project point onto line
-            proj_x = ax + t * abx
-            proj_y = ay + t * aby
-            
-            return ((px - proj_x) ** 2 + (py - proj_y) ** 2) ** 0.5
-        
         # Check if point is inside polygon using ray casting
         poly = np.array(self.points)
         if cv2.pointPolygonTest(poly, (x, y), False) < 0:
             return None
         
-        # Find closest edge points
-        top = (self.points[0], self.points[1])
-        right = (self.points[1], self.points[2])
-        bottom = (self.points[2], self.points[3])
-        left = (self.points[0], self.points[3])
+        # Transform the screen point to the normalized grid space
+        point = np.array([[x, y]], dtype=np.float32)
+        transformed_point = cv2.perspectiveTransform(point.reshape(-1, 1, 2), self.transform_matrix)
+        transformed_point = transformed_point.reshape(-1, 2)[0]
         
-        # Get vertical position (y coordinate)
-        dist_top = point_to_line_distance((x, y), top[0], top[1])
-        dist_bottom = point_to_line_distance((x, y), bottom[0], bottom[1])
-        y_ratio = dist_top / (dist_top + dist_bottom)
-        
-        # Get horizontal position (x coordinate)
-        dist_left = point_to_line_distance((x, y), left[0], left[1])
-        dist_right = point_to_line_distance((x, y), right[0], right[1])
-        x_ratio = dist_left / (dist_left + dist_right)
-        
-        # Convert to grid coordinates
-        col = int(x_ratio * self.cols)
-        row = int(y_ratio * self.rows)
+        # Get grid coordinates
+        col = int(transformed_point[0])
+        row = int(transformed_point[1])
         
         # Clamp values to grid bounds
         col = max(0, min(col, self.cols - 1))
@@ -196,62 +163,57 @@ class GridDrawer:
         return self.highlighted_cell
     
     def project_grid(self, frame):
-        if len(self.points) != 4:
+        if len(self.points) != 4 or self.transform_matrix is None:
             return frame
             
         display_frame = frame.copy()
         
-        # Helper function for linear interpolation
-        def lerp(start, end, t):
-            return tuple(int(a + (b - a) * t) for a, b in zip(start, end))
+        # Create grid lines in the normalized space
+        grid_points = []
         
-        # Get edges of polygon
-        top = (self.points[0], self.points[1])
-        right = (self.points[1], self.points[2])
-        bottom = (self.points[2], self.points[3])
-        left = (self.points[0], self.points[3])
-        
-        # Draw vertical lines
+        # Vertical lines
         for i in range(self.cols + 1):
-            t = i / self.cols
-            # Get points on top and bottom edges
-            p1 = lerp(top[0], top[1], t)
-            p2 = lerp(bottom[1], bottom[0], t)  # Note reversed order for bottom
-            cv2.line(display_frame, p1, p2, (255, 255, 0), 2)
+            grid_points.append(np.array([[i, 0], [i, self.rows]], dtype=np.float32))
         
-        # Draw horizontal lines
+        # Horizontal lines
         for i in range(self.rows + 1):
-            t = i / self.rows
-            # Get points on left and right edges
-            p1 = lerp(left[0], left[1], t)
-            p2 = lerp(right[0], right[1], t)
-            cv2.line(display_frame, p1, p2, (255, 255, 0), 2)
+            grid_points.append(np.array([[0, i], [self.cols, i]], dtype=np.float32))
         
-        # Highlight cell if center of motion was in the cell
+        # Transform grid lines to screen space and draw them
+        for line in grid_points:
+            # Reshape for perspective transform
+            line_reshaped = line.reshape(-1, 1, 2)
+            transformed_line = cv2.perspectiveTransform(line_reshaped, self.inverse_matrix)
+            
+            # Convert to pixel coordinates and draw line
+            start_point = tuple(map(int, transformed_line[0][0]))
+            end_point = tuple(map(int, transformed_line[1][0]))
+            cv2.line(display_frame, start_point, end_point, (255, 255, 0), 2)
+        
+        # Highlight cell if a cell is selected
         if self.highlighted_cell is not None:
             row, col = self.highlighted_cell
             
-            # Calculate corners of highlighted cell
-            t1 = col / self.cols
-            t2 = (col + 1) / self.cols
-            s1 = row / self.rows
-            s2 = (row + 1) / self.rows
+            # Calculate the four corners of the cell in normalized space
+            cell_corners = np.array([
+                [col, row],               # Top-left
+                [col + 1, row],           # Top-right
+                [col + 1, row + 1],       # Bottom-right
+                [col, row + 1]            # Bottom-left
+            ], dtype=np.float32).reshape(-1, 1, 2)
             
-            # Get the four corners of the cell
-            top_left = lerp(lerp(left[0], left[1], s1), lerp(right[0], right[1], s1), t1)
-            top_right = lerp(lerp(left[0], left[1], s1), lerp(right[0], right[1], s1), t2)
-            bottom_right = lerp(lerp(left[0], left[1], s2), lerp(right[0], right[1], s2), t2)
-            bottom_left = lerp(lerp(left[0], left[1], s2), lerp(right[0], right[1], s2), t1)
+            # Transform cell corners to screen space
+            transformed_corners = cv2.perspectiveTransform(cell_corners, self.inverse_matrix)
+            corners = np.array(transformed_corners.reshape(-1, 2), dtype=np.int32)
             
             # Create a separate overlay image
             overlay = display_frame.copy()
 
             # Draw the filled polygon on the overlay
-            corners = np.array([top_left, top_right, bottom_right, bottom_left], dtype=np.int32)
             cv2.fillPoly(overlay, [corners], (0, 0, 255))
 
-            # Define transparency (alpha). 0.0 is fully transparent, 1.0 is fully opaque
-            alpha = 0.5  # This gives 50% transparency
+            # Define transparency (alpha)
+            alpha = 0.5  # 50% transparency
 
             # Blend the overlay with the original image
             cv2.addWeighted(overlay, alpha, display_frame, 1 - alpha, 0, display_frame)

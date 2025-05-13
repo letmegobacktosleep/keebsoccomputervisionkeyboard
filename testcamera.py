@@ -23,9 +23,10 @@ while True:
     # Get the actual resolution
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_rate = int(cap.get(cv2.CAP_PROP_FPS))
 
     # Optionally, put the resolution text on the frame
-    cv2.putText(frame, f"{width}x{height}", (10, 30),
+    cv2.putText(frame, f"{width}x{height}@{frame_rate}fps", (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
     # Show the frame

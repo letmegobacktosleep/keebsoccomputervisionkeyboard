@@ -43,6 +43,7 @@ def compare_frames(prev_frame, current_frame, threshold):
     return gray, thresh, contours
 
 class CameraThread(threading.Thread):
+
     def __init__(self, camera_id):
         super().__init__()
         self.camera_id = camera_id
@@ -53,6 +54,8 @@ class CameraThread(threading.Thread):
         self._camera_lock = threading.Lock()
 
     def run(self):
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         while True:
             with self._stop_lock:
                 if not self.running:
@@ -94,6 +97,7 @@ class CameraThread(threading.Thread):
                 self.cap = None
 
 class GridDrawer:
+
     def __init__(self, rows, cols):
         self.points = []
         self.max_points = 4
@@ -136,14 +140,22 @@ class GridDrawer:
         self.transform_matrix = cv2.getPerspectiveTransform(src_points, dst_points)
         self.inverse_matrix = cv2.getPerspectiveTransform(dst_points, src_points)
     
+    def is_point_in_grid(self, x, y):
+        """Check if a point is inside the grid."""
+        if len(self.points) != 4:
+            return False
+            
+        # Check if point is inside polygon using ray casting
+        poly = np.array(self.points)
+        return cv2.pointPolygonTest(poly, (x, y), False) >= 0
+    
     def get_grid_coordinate(self, x, y):
         """Convert screen coordinates to grid coordinates using perspective transformation."""
         if len(self.points) != 4 or self.transform_matrix is None:
             return None
             
-        # Check if point is inside polygon using ray casting
-        poly = np.array(self.points)
-        if cv2.pointPolygonTest(poly, (x, y), False) < 0:
+        # Check if point is inside grid
+        if not self.is_point_in_grid(x, y):
             return None
         
         # Transform the screen point to the normalized grid space
@@ -334,12 +346,11 @@ def track_motion(camera2_id, grid, command_queue, loop_forever=False):
 
         # Get current threshold values
         threshold = cv2.getTrackbarPos('Threshold', 'Camera')
-        aaaaaaaa = cv2.getTrackbarPos('AAAAAAAA', 'Camera') ** 2
+        min_area = cv2.getTrackbarPos('Min Area', 'Camera') ** 2
         min_size = cv2.getTrackbarPos('Min Size', 'Camera') ** 2
         max_size = cv2.getTrackbarPos('Max Size', 'Camera') ** 2
         r_frame_timeout = cv2.getTrackbarPos('Ref Timeout', 'Camera')
         n_frames_motion = cv2.getTrackbarPos('Min Frames', 'Camera')
-        bottom_threshold = int(cv2.getTrackbarPos('BOTTOM', 'Camera') * height2 / 100)
         
         # Compare frames for both cameras
         gray2, _, contours1 = compare_frames(prev_frame, current_frame, threshold)
@@ -350,17 +361,27 @@ def track_motion(camera2_id, grid, command_queue, loop_forever=False):
         # Check for motion in camera
         motion_detected2 = False
         for contour in contours1:
-            if cv2.contourArea(contour) > aaaaaaaa:
-                x, y, w, h = cv2.boundingRect(contour)
+            # Calculate contour area and center
+            area = cv2.contourArea(contour)
+            if area < min_area:
+                continue
                 
-                # Above bottom threshold
-                if y < bottom_threshold:
-
-                    # Show rectangle
-                    cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-                    # Set to true
-                    motion_detected2 = True
+            M = cv2.moments(contour)
+            if M["m00"] == 0:
+                continue
+                
+            # Get center of contour
+            cx = int(M["m10"] / M["m00"])
+            cy = int(M["m01"] / M["m00"])
+            
+            # Check if center is within grid
+            if grid.is_point_in_grid(cx, cy):
+                # Show rectangle
+                x, y, w, h = cv2.boundingRect(contour)
+                cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 255, 0), 1)
+                
+                # Set to true
+                motion_detected2 = True
         
         # When no motion in camera
         if not motion_detected2:
@@ -422,34 +443,36 @@ def track_motion(camera2_id, grid, command_queue, loop_forever=False):
             if contour_area < min_size or contour_area > max_size:
                 continue
             
-            # Is bigger than previous largest contour & above threshold
-            x, y, w, h = cv2.boundingRect(contour)
-            if (contour_area > largest_area2) and (y < bottom_threshold):
+            # Calculate center of contour
+            M = cv2.moments(contour)
+            if M["m00"] == 0:
+                continue
+                
+            cx = int(M["m10"] / M["m00"])
+            cy = int(M["m01"] / M["m00"])
+            
+            # Is bigger than previous largest contour & within grid bounds
+            if contour_area > largest_area2 and grid.is_point_in_grid(cx, cy):
                 largest_area2 = contour_area
                 largest_contour2 = contour
-                
         
         # If there is a valid contour
         if largest_contour2 is not None:
             x, y, w, h = cv2.boundingRect(largest_contour2)
-            center = ((x+w//2), (y+h//2))
+            
+            # Calculate center
+            M = cv2.moments(largest_contour2)
+            cx = int(M["m10"] / M["m00"])
+            cy = int(M["m01"] / M["m00"])
+            center = (cx, cy)
 
             # Draw box
-            cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
-            cv2.putText(display_frame, f'Motion {center}', (x, y - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 0, 255), 1)
+            cv2.putText(display_frame, f'{center}', (x, y - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
         
             # Add to movement path
             movement_path.append(center)
-
-        # Draw bottom threshold
-        cv2.line(
-            display_frame, 
-            (0,      bottom_threshold), 
-            (width2, bottom_threshold), 
-            (0, 255, 0), 
-            3
-            )
 
         # Draw movement path
         if len(movement_path) > 0:
@@ -481,15 +504,14 @@ if __name__ == "__main__":
     # Create windows and sliders
     cv2.namedWindow('Camera')
     cv2.createTrackbar('Threshold', 'Camera', 25, 100, nothing)
-    cv2.createTrackbar('AAAAAAAA', 'Camera', 5, 1000, nothing)
-    cv2.createTrackbar('Min Size', 'Camera', 5, 1000, nothing)
+    cv2.createTrackbar('Min Area', 'Camera', 5, 100, nothing)  # Renamed from AAAAAAAA to Min Area
+    cv2.createTrackbar('Min Size', 'Camera', 5, 100, nothing)
     cv2.createTrackbar('Max Size', 'Camera', 100, 1000, nothing)
     cv2.createTrackbar('Ref Timeout', 'Camera', 5, 10, nothing)
-    cv2.createTrackbar('Min Frames', 'Camera', 2, 10, nothing)
-    cv2.createTrackbar('BOTTOM', 'Camera', 50, 100, nothing)
+    cv2.createTrackbar('Min Frames', 'Camera', 2, 10, nothing)  
 
     # Define keyboard layout
-    if True:
+    if False:
         keyboard_layout = np.array([
             ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
             ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', Key.backspace],

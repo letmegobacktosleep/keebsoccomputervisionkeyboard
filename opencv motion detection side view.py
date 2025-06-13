@@ -420,7 +420,7 @@ def track_motion(camera_id, grid, command_queue, loop_forever=False):
                     if grid_coordinate is not None:
                         # Press corresponding key
                         virtual_keyboard.press(keyboard_layout[grid_coordinate])
-                        time.sleep(0.5 + int.from_bytes(os.urandom(1), 'big') / 1000)
+                        time.sleep(0.25 + int.from_bytes(os.urandom(1), 'big') / 2000)
                         virtual_keyboard.release(keyboard_layout[grid_coordinate])
 
                         if not loop_forever:

@@ -3,18 +3,14 @@ import os
 import time
 import threading
 from queue import Queue, Empty, Full
-
 # Import 3rd party libraries
 import cv2
 import numpy as np
 from pynput import keyboard
 from pynput.keyboard import Key, Controller
 
-
 def nothing(x):
-    """Dummy function for trackbar callbacks."""
     pass
-
 
 def compare_frames(prev_frame, current_frame, threshold):
     """
@@ -46,30 +42,8 @@ def compare_frames(prev_frame, current_frame, threshold):
     
     return gray, thresh, contours
 
-
-def get_rightmost_point(contour):
-    """
-    Get the rightmost x and center y of a contour.
-    
-    Args:
-        contour: OpenCV contour
-        
-    Returns:
-        tuple: (rightmost_x, center_y) coordinates
-    """
-    # Get rightmost x coordinate
-    rightmost_x = contour[contour[:, :, 0].argmax()][0][0]
-    
-    # Get center y coordinate
-    M = cv2.moments(contour)
-    center_y = int(M["m01"] / M["m00"]) if M["m00"] != 0 else 0
-    
-    return (int(rightmost_x), int(center_y))
-
-
 class CameraThread(threading.Thread):
-    """Thread for handling camera capture."""
-    
+
     def __init__(self, camera_id):
         super().__init__()
         self.camera_id = camera_id
@@ -80,10 +54,8 @@ class CameraThread(threading.Thread):
         self._camera_lock = threading.Lock()
 
     def run(self):
-        """Main thread loop for capturing frames."""
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-        
         while True:
             with self._stop_lock:
                 if not self.running:
@@ -95,34 +67,28 @@ class CameraThread(threading.Thread):
                 ret, frame = self.cap.read()
                 
             if ret:
-                # Remove old frame if queue is full
                 if self.frame_queue.full():
                     try:
                         self.frame_queue.get_nowait()
                     except Empty:
                         pass
-                
-                # Add new frame
                 try:
                     self.frame_queue.put_nowait(frame)
                 except Full:
                     pass
-            
             time.sleep(0.01)
 
     def get_frame(self):
-        """Get the latest frame from the queue."""
         try:
             return self.frame_queue.get(timeout=0.01)
         except Empty:
             return None
 
     def stop(self):
-        """Stop the camera thread and release resources."""
         with self._stop_lock:
             self.running = False
         
-        # Give the thread time to exit
+        # Give the thread a moment to exit its read loop
         time.sleep(0.1)
         
         with self._camera_lock:
@@ -130,10 +96,8 @@ class CameraThread(threading.Thread):
                 self.cap.release()
                 self.cap = None
 
-
 class GridDrawer:
-    """Handles grid drawing and coordinate transformation."""
-    
+
     def __init__(self, rows, cols):
         self.points = []
         self.max_points = 4
@@ -145,7 +109,6 @@ class GridDrawer:
         self.counter = 0
         
     def mouse_callback(self, event, x, y, flags, param):
-        """Handle mouse clicks for grid setup."""
         if event == cv2.EVENT_LBUTTONDOWN:
             if len(self.points) < self.max_points:
                 self.points.append((x, y))
@@ -184,7 +147,7 @@ class GridDrawer:
             
         # Check if point is inside polygon using ray casting
         poly = np.array(self.points)
-        return cv2.pointPolygonTest(poly, (int(x), int(y)), False) >= 0
+        return cv2.pointPolygonTest(poly, (x, y), False) >= 0
     
     def get_grid_coordinate(self, x, y):
         """Convert screen coordinates to grid coordinates using perspective transformation."""
@@ -212,7 +175,6 @@ class GridDrawer:
         return self.highlighted_cell
     
     def project_grid(self, frame):
-        """Project the grid onto the frame."""
         if len(self.points) != 4 or self.transform_matrix is None:
             return frame
             
@@ -231,14 +193,16 @@ class GridDrawer:
         
         # Transform grid lines to screen space and draw them
         for line in grid_points:
+            # Reshape for perspective transform
             line_reshaped = line.reshape(-1, 1, 2)
             transformed_line = cv2.perspectiveTransform(line_reshaped, self.inverse_matrix)
             
+            # Convert to pixel coordinates and draw line
             start_point = tuple(map(int, transformed_line[0][0]))
             end_point = tuple(map(int, transformed_line[1][0]))
             cv2.line(display_frame, start_point, end_point, (255, 255, 0), 2)
         
-        # Highlight selected cell
+        # Highlight cell if a cell is selected
         if self.highlighted_cell is not None:
             row, col = self.highlighted_cell
             
@@ -254,16 +218,21 @@ class GridDrawer:
             transformed_corners = cv2.perspectiveTransform(cell_corners, self.inverse_matrix)
             corners = np.array(transformed_corners.reshape(-1, 2), dtype=np.int32)
             
-            # Create overlay with transparency
+            # Create a separate overlay image
             overlay = display_frame.copy()
+
+            # Draw the filled polygon on the overlay
             cv2.fillPoly(overlay, [corners], (0, 0, 255))
-            alpha = 0.5
+
+            # Define transparency (alpha)
+            alpha = 0.5  # 50% transparency
+
+            # Blend the overlay with the original image
             cv2.addWeighted(overlay, alpha, display_frame, 1 - alpha, 0, display_frame)
         
         return display_frame
     
     def draw_on_frame(self, frame):
-        """Draw the grid and setup points on the frame."""
         display_frame = frame.copy()
         
         if len(self.points) == self.max_points:
@@ -272,16 +241,19 @@ class GridDrawer:
         # Draw lines between points
         if len(self.points) > 1:
             for i in range(len(self.points) - 1):
-                cv2.line(display_frame, self.points[i], self.points[i + 1], (255, 255, 0), 2)
+                cv2.line(display_frame, self.points[i], self.points[i + 1], 
+                        (255, 255, 0), 2)
                 
             if len(self.points) == self.max_points:
-                cv2.line(display_frame, self.points[-1], self.points[0], (255, 255, 0), 2)
+                cv2.line(display_frame, self.points[-1], self.points[0], 
+                        (255, 255, 0), 2)
                 
         # Draw points
         for i, point in enumerate(self.points):
             color = (0, 255, 255) if (len(self.points) == self.max_points and i == self.counter) else (0, 0, 255)
             cv2.circle(display_frame, point, 7, color, -1)
-            cv2.putText(display_frame, str(i), (point[0] + 10, point[1] + 10),
+            cv2.putText(display_frame, str(i), 
+                       (point[0] + 10, point[1] + 10),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
         
         # Display status information
@@ -299,10 +271,7 @@ class GridDrawer:
         
         return display_frame
 
-
 class KeyboardListener:
-    """Handles keyboard input in a separate thread."""
-    
     def __init__(self, command_queue):
         self.running = True
         self.command_queue = command_queue
@@ -310,13 +279,15 @@ class KeyboardListener:
         self.listener.start()
 
     def on_press(self, key):
-        """Handle key press events."""
         try:
             if key == Key.enter:
+                # Send command to main thread
                 self.command_queue.put('track')
             elif key == Key.esc:
+                # Send abort command
                 self.command_queue.put('abort')
             elif hasattr(key, 'char') and key.char == '`':
+                # Send exit command
                 self.command_queue.put('exit')
                 self.running = False
                 return False  # Stop listener
@@ -324,33 +295,35 @@ class KeyboardListener:
             pass
 
     def stop(self):
-        """Stop the keyboard listener."""
         self.running = False
         self.listener.stop()
 
+def track_motion(camera2_id, grid, command_queue, loop_forever=False):
+    # Start camera threads
+    camera2 = CameraThread(camera2_id)
+    camera2.start()
 
-def track_motion(camera_id, grid, command_queue, loop_forever=False):
-    """Main motion tracking function."""
-    # Start camera thread
-    camera = CameraThread(camera_id)
-    camera.start()
-
-    # Wait for first frame
+    # Wait for first frames
     while True:
-        frame = camera.get_frame()
+        frame = camera2.get_frame()
         if frame is not None:
             break
         time.sleep(0.1)
 
-    # Initialize previous frame
+    # Initialize previous frames
     prev_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     prev_frame = cv2.GaussianBlur(prev_frame, (21, 21), 0)
     
-    # Store reference frame
+    # Get frame dimensions
+    height2 = prev_frame.shape[0]
+    width2 = prev_frame.shape[1]
+    
+    # Store reference frame from camera
     reference_frame = prev_frame.copy()
     reference_frame_counter = 0
-    
-    # Movement path to store rightmost points
+    display_frame = None
+
+    # Movement path
     movement_path = []
 
     while True:
@@ -359,81 +332,99 @@ def track_motion(camera_id, grid, command_queue, loop_forever=False):
             command = command_queue.get_nowait()
             if command in ['abort', 'exit']:
                 print("Motion tracking stopped")
-                camera.stop()
-                camera.join()
+                camera2.stop()
+                camera2.join()
                 return command
         except Empty:
             pass
 
-        # Get current frame
-        current_frame = camera.get_frame()
+        # Get current frames from queues
+        current_frame = camera2.get_frame()
+        
         if current_frame is None:
             continue
 
-        # Get trackbar values
+        # Get current threshold values
         threshold = cv2.getTrackbarPos('Threshold', 'Camera')
         min_area = cv2.getTrackbarPos('Min Area', 'Camera') ** 2
         min_size = cv2.getTrackbarPos('Min Size', 'Camera') ** 2
         max_size = cv2.getTrackbarPos('Max Size', 'Camera') ** 2
-        ref_timeout = cv2.getTrackbarPos('Ref Timeout', 'Camera')
-        min_frames = cv2.getTrackbarPos('Min Frames', 'Camera')
+        r_frame_timeout = cv2.getTrackbarPos('Ref Timeout', 'Camera')
+        n_frames_motion = cv2.getTrackbarPos('Min Frames', 'Camera')
         
-        # Compare frames for motion detection
-        gray, _, contours = compare_frames(prev_frame, current_frame, threshold)
+        # Compare frames for both cameras
+        gray2, _, contours1 = compare_frames(prev_frame, current_frame, threshold)
+
+        # Copy frame for camera
         display_frame = current_frame.copy()
         
-        # Check for motion in current frame vs previous frame
-        motion_detected = False
-        for contour in contours:
+        # Check for motion in camera
+        motion_detected2 = False
+        for contour in contours1:
+            # Calculate contour area and center
             area = cv2.contourArea(contour)
             if area < min_area:
                 continue
                 
-            # Get rightmost point instead of center
-            rightmost_point = get_rightmost_point(contour)
+            M = cv2.moments(contour)
+            if M["m00"] == 0:
+                continue
+                
+            # Get center of contour
+            cx = int(M["m10"] / M["m00"])
+            cy = int(M["m01"] / M["m00"])
             
-            # Check if rightmost point is within grid
-            if grid.is_point_in_grid(*rightmost_point):
+            # Check if center is within grid
+            if grid.is_point_in_grid(cx, cy):
+                # Show rectangle
                 x, y, w, h = cv2.boundingRect(contour)
                 cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 255, 0), 1)
-                motion_detected = True
+                
+                # Set to true
+                motion_detected2 = True
         
-        # Handle reference frame updates when no motion
-        if not motion_detected:
-            if reference_frame_counter > ref_timeout:
+        # When no motion in camera
+        if not motion_detected2:
+            
+            # No motion in last few frames
+            if reference_frame_counter > r_frame_timeout:
+
                 # Update reference frame
-                reference_frame = gray.copy()
+                reference_frame = gray2.copy()
                 cv2.putText(display_frame, "Reference Frame Captured", (10, 70),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                 
-                # Process movement path if sufficient motion was detected
-                if len(movement_path) > min_frames:
-                    # Find rightmost point (maximum X coordinate) instead of topmost
-                    target_point = movement_path[0]
-                    for point in movement_path:
-                        if point[0] > target_point[0]:  # Compare X coordinates
-                            target_point = point
+                # If there are was motion in more than a few frames
+                if (len(movement_path) > n_frames_motion):
+
+                    # Get highest coordinate (lowest Y value)
+                    center = movement_path[0]
+                    for i in range(len(movement_path)):
+                        if movement_path[i][1] < center[1]:
+                            center = movement_path[i]
                     
-                    # Get grid coordinates for the rightmost point
-                    grid_coordinate = grid.get_grid_coordinate(*target_point)
+                    # Get the grid coordinates
+                    grid_coordinate = grid.get_grid_coordinate(*center)
 
                     if grid_coordinate is not None:
-                        # Press corresponding key
+                        # Press corresponding key in keyboard_layout
                         virtual_keyboard.press(keyboard_layout[grid_coordinate])
-                        time.sleep(0.5 + int.from_bytes(os.urandom(1), 'big') / 1000)
+                        time.sleep(0.2 + int.from_bytes(os.urandom(1), 'big') / 2000)
                         virtual_keyboard.release(keyboard_layout[grid_coordinate])
 
                         if not loop_forever:
-                            # Show result and exit
+
+                            # Project grid onto camera
                             display_frame = grid.draw_on_frame(display_frame)
                             cv2.imshow('Camera', display_frame)
                             cv2.waitKey(1)
-                            
-                            camera.stop()
-                            camera.join()
+
+                            # Stop cameras and return result
+                            camera2.stop()
+                            camera2.join()
                             return grid_coordinate
                 
-                # Reset movement path
+                # Reset the movement path
                 movement_path = []
                         
             else:
@@ -441,73 +432,90 @@ def track_motion(camera_id, grid, command_queue, loop_forever=False):
         else:
             reference_frame_counter = 0
 
-        # Compare against reference frame for tracking
-        _, _, ref_contours = compare_frames(reference_frame, current_frame, threshold)
+        # Check for motion in camera against reference frame
+        _, _, contours2 = compare_frames(reference_frame, current_frame, threshold)
 
-        # Find the largest valid contour
-        largest_area = 0
-        largest_contour = None
-        
-        for contour in ref_contours:
-            area = cv2.contourArea(contour)
-            if area < min_size or area > max_size:
+        # Find the largest contour
+        largest_area2 = 0
+        largest_contour2 = None
+        for contour in contours2:
+            contour_area = cv2.contourArea(contour)
+            if contour_area < min_size or contour_area > max_size:
                 continue
             
-            # Get rightmost point
-            rightmost_point = get_rightmost_point(contour)
+            # Calculate center of contour
+            M = cv2.moments(contour)
+            if M["m00"] == 0:
+                continue
+                
+            cx = int(M["m10"] / M["m00"])
+            cy = int(M["m01"] / M["m00"])
             
-            # Check if it's the largest contour within grid bounds
-            if area > largest_area and grid.is_point_in_grid(*rightmost_point):
-                largest_area = area
-                largest_contour = contour
+            # Is bigger than previous largest contour & within grid bounds
+            if contour_area > largest_area2 and grid.is_point_in_grid(cx, cy):
+                largest_area2 = contour_area
+                largest_contour2 = contour
         
-        # Process the largest contour
-        if largest_contour is not None:
-            x, y, w, h = cv2.boundingRect(largest_contour)
-            rightmost_point = get_rightmost_point(largest_contour)
+        # If there is a valid contour
+        if largest_contour2 is not None:
+            x, y, w, h = cv2.boundingRect(largest_contour2)
+            
+            # Calculate center
+            M = cv2.moments(largest_contour2)
+            cx = int(M["m10"] / M["m00"])
+            cy = int(M["m01"] / M["m00"])
+            center = (cx, cy)
 
-            # Draw bounding box and rightmost point
+            # Draw box
             cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 0, 255), 1)
-            cv2.circle(display_frame, rightmost_point, 5, (255, 0, 0), -1)
-            cv2.putText(display_frame, f'{rightmost_point}', (x, y - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+            cv2.putText(display_frame, f'{center}', (x, y - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
         
-            # Add rightmost point to movement path
-            movement_path.append(rightmost_point)
+            # Add to movement path
+            movement_path.append(center)
 
         # Draw movement path
-        if len(movement_path) > 1:
+        if len(movement_path) > 0:
             for i in range(len(movement_path) - 1):
-                cv2.line(display_frame, movement_path[i], movement_path[i + 1], (0, 0, 255), 3)
+                cv2.line(
+                    display_frame,
+                    movement_path[i],
+                    movement_path[i+1],
+                    (0, 0, 255),
+                    3
+                )
             
-        # Project grid onto frame
+        # Project grid onto camera
         display_frame = grid.draw_on_frame(display_frame)
+
+        # Show frames
         cv2.imshow('Camera', display_frame)
         
-        # Update previous frame
-        prev_frame = gray
-        cv2.waitKey(1)
+        # Update previous frames
+        prev_frame = gray2
 
+        # Render frames on windows
+        cv2.waitKey(1)
 
 if __name__ == "__main__":
     # Create command queue for thread communication
     command_queue = Queue()
 
-    # Create windows and trackbars
+    # Create windows and sliders
     cv2.namedWindow('Camera')
     cv2.createTrackbar('Threshold', 'Camera', 25, 100, nothing)
-    cv2.createTrackbar('Min Area', 'Camera', 5, 100, nothing)
-    cv2.createTrackbar('Min Size', 'Camera', 5, 100, nothing)
+    cv2.createTrackbar('Min Area', 'Camera', 4, 100, nothing)  # Renamed from AAAAAAAA to Min Area
+    cv2.createTrackbar('Min Size', 'Camera', 4, 100, nothing)
     cv2.createTrackbar('Max Size', 'Camera', 100, 1000, nothing)
-    cv2.createTrackbar('Ref Timeout', 'Camera', 5, 30, nothing)
-    cv2.createTrackbar('Min Frames', 'Camera', 3, 10, nothing)
+    cv2.createTrackbar('Ref Timeout', 'Camera', 5, 10, nothing)
+    cv2.createTrackbar('Min Frames', 'Camera', 1, 10, nothing)  
 
     # Define keyboard layout
-    if False:
+    if True:
         keyboard_layout = np.array([
             ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
             ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', Key.backspace],
-            ['z', 'x', 'c', 'v', 'b', 'n', 'm', Key.space, Key.space, Key.space]
+            ['z', 'x', 'c', 'v', 'b', 'n', 'm', Key.space, Key.space, Key.backspace]
         ])
     else:
         keyboard_layout = np.array([
@@ -517,59 +525,45 @@ if __name__ == "__main__":
             ['0', Key.backspace, Key.backspace]
         ])
 
-    # Create grid drawer and set mouse callback
+    # Create mouse callback
     grid = GridDrawer(*np.shape(keyboard_layout))
     cv2.setMouseCallback("Camera", grid.mouse_callback)
 
-    # Load and display standby image
-    try:
-        standby_image = cv2.imread("./standby.png")
-        if standby_image is not None:
-            cv2.imshow('Camera', standby_image)
-        else:
-            # Create a simple standby image if file doesn't exist
-            standby_image = np.zeros((480, 640, 3), dtype=np.uint8)
-            cv2.putText(standby_image, "Press ENTER to start tracking", (50, 240),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-            cv2.imshow('Camera', standby_image)
-    except:
-        # Fallback if image loading fails
-        standby_image = np.zeros((480, 640, 3), dtype=np.uint8)
-        cv2.putText(standby_image, "Press ENTER to start tracking", (50, 240),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-        cv2.imshow('Camera', standby_image)
-    
+    # Load standby image
+    standby_image = cv2.imread("./standby.png")
+    cv2.imshow('Camera', standby_image)
     cv2.waitKey(1)
 
-    # Create virtual keyboard controller
+    # Create keyboard controller
     virtual_keyboard = Controller()
 
     # Create and start keyboard listener
     keyboard_listener = KeyboardListener(command_queue)
 
-    # Main application loop
+    # Main loop
     running = True
     while running:
+        # Handle OpenCV window updates
         cv2.waitKey(1)
 
-        # Check for commands
+        # Check for commands from keyboard listener
         try:
             command = command_queue.get_nowait()
             if command == 'track':
-                result = track_motion(1, grid, command_queue, loop_forever=True)
+                result = track_motion(0, grid, command_queue, loop_forever=True)
                 if result == 'exit':
                     running = False
                 elif result == 'abort':
                     pass
                 elif result is not None:
-                    print(f"Grid coordinate: {result}")
+                    print(f"{result}")
 
             elif command == 'exit':
                 running = False
         except Empty:
             pass
 
-        time.sleep(0.1)
+        time.sleep(0.1)  # Reduce CPU usage
 
     # Cleanup
     keyboard_listener.stop()
